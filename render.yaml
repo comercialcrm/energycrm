@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: energycrm
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: SUPABASE_URL
+        value: https://qbgcwkbovjjzddnvcldl.supabase.co
+      - key: SUPABASE_SERVICE_KEY
+        value: sb_secret_ryoKaU1ASajIQUqgGOjHbg_fxaQBHgv
+      - key: NODE_ENV
+        value: production
