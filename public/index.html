@@ -869,15 +869,11 @@ async function cargarComerciales() {
   const sel = document.getElementById('c-comercial-asignado');
   try {
     const usuarios = await api('GET', '/api/usuarios');
-    if (usuarios && usuarios.length > 1) {
-      sel.innerHTML = '<option value="">Sin asignar</option>' + 
-        usuarios.map(u => `<option value="${u.id}">${u.nombre} (${u.rol})</option>`).join('');
-      bloque.style.display = 'block';
-    } else {
-      bloque.style.display = 'none';
-    }
+    sel.innerHTML = '<option value="">Sin asignar</option>' + 
+      (usuarios||[]).map(u => `<option value="${u.id}">${u.nombre} (${u.rol})</option>`).join('');
+    bloque.style.display = 'block';
   } catch(e) {
-    bloque.style.display = 'none';
+    bloque.style.display = 'block';
   }
 }
 
