@@ -360,7 +360,7 @@ select.filter-sel:focus{border-color:var(--am);}
     <div class="section" id="sec-superadmin">
       <div class="toolbar" style="justify-content:space-between;">
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;color:var(--az);">👑 Panel Global</div>
-        <button class="btn btn-primary" onclick="abrirModalEmpresa()">+ Nueva Empresa</button>
+        <button class="btn btn-primary" style="cursor:pointer;z-index:10;position:relative;" onclick="abrirModalEmpresa(); return false;">+ Nueva Empresa</button>
       </div>
       <div class="table-wrap">
         <table class="data-table">
@@ -403,6 +403,11 @@ select.filter-sel:focus{border-color:var(--am);}
       </div>
       <div class="form-row full">
         <div class="field"><label>Dirección</label><input type="text" id="c-dir"></div>
+      </div>
+      <div class="form-row full" id="bloque-comercial-asignado" style="display:none">
+        <div class="field"><label>👤 Comercial / Administrador asignado</label>
+          <select id="c-comercial-asignado"><option value="">Sin asignar</option></select>
+        </div>
       </div>
       <div class="form-row">
         <div class="field"><label>Tipo de suministro</label>
@@ -555,7 +560,7 @@ select.filter-sel:focus{border-color:var(--am);}
         <div class="field"><label>Email admin *</label><input type="email" id="e-admin-email" placeholder="admin@empresa.com"></div>
       </div>
       <div class="form-row full">
-        <div class="field"><label>Contraseña inicial *</label><input type="text" id="e-admin-pass" placeholder="Contraseña temporal"></div>
+        <div class="field"><label>Contraseña inicial *</label><input type="text" id="e-admin-pass" placeholder="Escribe una contraseña..." autocomplete="off"></div>
       </div>
       <input type="hidden" id="e-id">
     </div>
@@ -840,11 +845,38 @@ function abrirModalCliente(id) {
   });
   document.getElementById('bloque-docs').style.display = 'none';
   document.getElementById('doc-list').innerHTML = '';
+  // Limpiar lector PDF
+  document.getElementById('pdf-factura-input').value = '';
+  document.getElementById('pdf-status').style.display = 'none';
+  document.getElementById('pdf-status').textContent = '';
   toggleTipo();
+  cargarComerciales();
   document.getElementById('modal-cliente').classList.add('open');
 }
 
 function cerrarModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function toggleComLuz() {
+  const sel = document.getElementById('c-com-luz').value;
+  document.getElementById('bloque-com-luz-manual').style.display = sel === 'otra' ? 'block' : 'none';
+}
+
+async function cargarComerciales() {
+  const bloque = document.getElementById('bloque-comercial-asignado');
+  const sel = document.getElementById('c-comercial-asignado');
+  try {
+    const usuarios = await api('GET', '/api/usuarios');
+    if (usuarios && usuarios.length > 1) {
+      sel.innerHTML = '<option value="">Sin asignar</option>' + 
+        usuarios.map(u => `<option value="${u.id}">${u.nombre} (${u.rol})</option>`).join('');
+      bloque.style.display = 'block';
+    } else {
+      bloque.style.display = 'none';
+    }
+  } catch(e) {
+    bloque.style.display = 'none';
+  }
+}
 
 function toggleTipo() {
   const t = document.getElementById('c-tipo').value;
@@ -865,7 +897,16 @@ async function editarCliente(id) {
   document.getElementById('c-tipo').value = c.tipo||'luz';
   document.getElementById('c-estado').value = c.estado||'activo';
   document.getElementById('c-cups-luz').value = c.cups_luz||'';
-  document.getElementById('c-com-luz').value = c.comercializadora_luz||'';
+  const comLuzVal = c.comercializadora_luz||'';
+  const comLuzOpts = Array.from(document.getElementById('c-com-luz').options).map(o => o.value);
+  if (comLuzVal && !comLuzOpts.includes(comLuzVal)) {
+    document.getElementById('c-com-luz').value = 'otra';
+    document.getElementById('c-com-luz-manual').value = comLuzVal;
+    document.getElementById('bloque-com-luz-manual').style.display = 'block';
+  } else {
+    document.getElementById('c-com-luz').value = comLuzVal;
+    document.getElementById('bloque-com-luz-manual').style.display = 'none';
+  }
   document.getElementById('c-tarifa-luz').value = c.tarifa_luz||'';
   document.getElementById('c-venc-luz').value = c.vencimiento_luz||'';
   document.getElementById('c-cups-gas').value = c.cups_gas||'';
@@ -878,6 +919,7 @@ async function editarCliente(id) {
   document.getElementById('c-com-fecha').value = c.comision_fecha||'';
   document.getElementById('c-notas').value = c.notas||'';
   toggleTipo();
+  if (c.comercial_id) document.getElementById('c-comercial-asignado').value = c.comercial_id;
 
   // Cargar documentos
   document.getElementById('bloque-docs').style.display = 'block';
@@ -901,7 +943,9 @@ async function guardarCliente() {
     tipo: document.getElementById('c-tipo').value,
     estado: document.getElementById('c-estado').value,
     cups_luz: document.getElementById('c-cups-luz').value,
-    comercializadora_luz: document.getElementById('c-com-luz').value,
+    comercializadora_luz: document.getElementById('c-com-luz').value === 'otra' 
+      ? document.getElementById('c-com-luz-manual').value 
+      : document.getElementById('c-com-luz').value,
     tarifa_luz: document.getElementById('c-tarifa-luz').value,
     vencimiento_luz: document.getElementById('c-venc-luz').value || null,
     cups_gas: document.getElementById('c-cups-gas').value,
@@ -913,6 +957,7 @@ async function guardarCliente() {
     comision_tipo: document.getElementById('c-com-tipo').value,
     comision_fecha: document.getElementById('c-com-fecha').value || null,
     notas: document.getElementById('c-notas').value,
+    comercial_id: document.getElementById('c-comercial-asignado').value || null,
   };
 
   try {
