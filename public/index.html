@@ -286,7 +286,8 @@ select.filter-sel:focus{border-color:var(--am);}
   <div class="tabs" id="tabs">
     <div class="tab active" onclick="showTab('dashboard')" data-tab="dashboard"><span class="tab-icon">📊</span>Dashboard</div>
     <div class="tab" onclick="showTab('clientes')" data-tab="clientes"><span class="tab-icon">👥</span>Clientes</div>
-    <div class="tab admin-only" onclick="showTab('usuarios')" data-tab="usuarios"><span class="tab-icon">⚙️</span>Usuarios</div>
+    <div class="tab admin-only" onclick="showTab('comerciales')" data-tab="comerciales"><span class="tab-icon">👤</span>Comerciales</div>
+    <div class="tab admin-only" onclick="showTab('usuarios')" data-tab="usuarios"><span class="tab-icon">⚙️</span>Admin</div>
     <div class="tab superadmin-only" onclick="showTab('superadmin')" data-tab="superadmin"><span class="tab-icon">👑</span>Super Admin</div>
   </div>
 
@@ -346,6 +347,14 @@ select.filter-sel:focus{border-color:var(--am);}
           </tbody>
         </table>
       </div>
+    </div>
+
+    <!-- COMERCIALES -->
+    <div class="section" id="sec-comerciales">
+      <div class="toolbar">
+        <button class="btn btn-primary" onclick="abrirModalComercial()">+ Nuevo Comercial</button>
+      </div>
+      <div id="lista-comerciales"><div class="loading"><div class="spinner"></div></div></div>
     </div>
 
     <!-- USUARIOS -->
@@ -574,6 +583,35 @@ select.filter-sel:focus{border-color:var(--am);}
   </div>
 </div>
 
+<!-- MODAL COMERCIAL -->
+<div class="modal-overlay" id="modal-comercial">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-comercial-title">Nuevo Comercial</div>
+      <button class="modal-close" onclick="cerrarModal('modal-comercial')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row full" style="margin-bottom:16px">
+        <div class="field"><label>Nombre completo *</label><input type="text" id="com-nombre"></div>
+      </div>
+      <div class="form-row full" style="margin-bottom:16px">
+        <div class="field"><label>Email *</label><input type="email" id="com-email"></div>
+      </div>
+      <div class="form-row full" style="margin-bottom:16px">
+        <div class="field"><label>Teléfono</label><input type="tel" id="com-tel"></div>
+      </div>
+      <div class="form-row full" style="margin-bottom:0">
+        <div class="field"><label>Contraseña</label><input type="password" id="com-pass" placeholder="Mínimo 6 caracteres"></div>
+      </div>
+      <input type="hidden" id="com-id">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModal('modal-comercial')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarComercial()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL USUARIO -->
 <div class="modal-overlay" id="modal-usuario">
   <div class="modal" style="max-width:440px">
@@ -712,6 +750,7 @@ function showTab(tab) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelector('[data-tab="'+tab+'"]').classList.add('active');
   document.getElementById('sec-'+tab).classList.add('active');
+  if (tab === 'comerciales') cargarComerciales2();
   if (tab === 'usuarios') cargarUsuarios();
   if (tab === 'superadmin') cargarEmpresas();
 }
@@ -1284,6 +1323,82 @@ function extraerDatosFactura(texto) {
   if(finMatch)datos.finContrato=finMatch[1];
 
   return datos;
+}
+
+// ── COMERCIALES ────────────────────────────────────────────────────
+async function cargarComerciales2() {
+  try {
+    const usuarios = await api('GET', '/api/usuarios');
+    const comerciales = (usuarios||[]).filter(u => u.rol === 'comercial');
+    const lista = document.getElementById('lista-comerciales');
+    if (!comerciales.length) {
+      lista.innerHTML = '<div class="empty"><div class="empty-icon">👤</div><div class="empty-text">No hay comerciales creados</div></div>';
+      return;
+    }
+    lista.innerHTML = comerciales.map(u => `
+      <div class="user-card">
+        <div class="user-avatar">${u.nombre.charAt(0).toUpperCase()}</div>
+        <div class="user-info-block">
+          <div class="user-name">${u.nombre}</div>
+          <div class="user-email">${u.email}</div>
+          <div class="user-meta">${u.activo ? '✅ Activo' : '❌ Inactivo'} · Último acceso: ${u.ultimo_acceso ? new Date(u.ultimo_acceso).toLocaleDateString('es-ES') : 'Nunca'}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="editarComercial('${u.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="desactivarComercial('${u.id}')">🗑️</button>
+        </div>
+      </div>`).join('');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function abrirModalComercial() {
+  document.getElementById('modal-comercial-title').textContent = 'Nuevo Comercial';
+  document.getElementById('com-id').value = '';
+  document.getElementById('com-nombre').value = '';
+  document.getElementById('com-email').value = '';
+  document.getElementById('com-tel').value = '';
+  document.getElementById('com-pass').value = '';
+  document.getElementById('modal-comercial').classList.add('open');
+}
+
+function editarComercial(id) {
+  const u = USUARIOS.find(x => x.id === id) || {id, nombre:'', email:'', telefono:''};
+  document.getElementById('modal-comercial-title').textContent = 'Editar Comercial';
+  document.getElementById('com-id').value = id;
+  document.getElementById('com-nombre').value = u.nombre || '';
+  document.getElementById('com-email').value = u.email || '';
+  document.getElementById('com-tel').value = u.telefono || '';
+  document.getElementById('com-pass').value = '';
+  document.getElementById('modal-comercial').classList.add('open');
+}
+
+async function guardarComercial() {
+  const id = document.getElementById('com-id').value;
+  const body = {
+    nombre: document.getElementById('com-nombre').value.trim(),
+    email: document.getElementById('com-email').value.trim(),
+    password: document.getElementById('com-pass').value,
+    rol: 'comercial',
+  };
+  if (!body.nombre || !body.email) { toast('Nombre y email son obligatorios', 'error'); return; }
+  if (!id && !body.password) { toast('La contraseña es obligatoria', 'error'); return; }
+  if (!body.password) delete body.password;
+  try {
+    if (id) await api('PUT', '/api/usuarios/' + id, body);
+    else await api('POST', '/api/usuarios', body);
+    cerrarModal('modal-comercial');
+    cargarComerciales2();
+    toast(id ? 'Comercial actualizado ✅' : 'Comercial creado ✅');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function desactivarComercial(id) {
+  if (!confirm('¿Desactivar este comercial?')) return;
+  try {
+    await api('DELETE', '/api/usuarios/' + id);
+    cargarComerciales2();
+    toast('Comercial desactivado');
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 // ── SUPERADMIN ────────────────────────────────────────────────────
