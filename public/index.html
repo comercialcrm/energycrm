@@ -287,6 +287,7 @@ select.filter-sel:focus{border-color:var(--am);}
     <div class="tab active" onclick="showTab('dashboard')" data-tab="dashboard"><span class="tab-icon">📊</span>Dashboard</div>
     <div class="tab" onclick="showTab('clientes')" data-tab="clientes"><span class="tab-icon">👥</span>Clientes</div>
     <div class="tab admin-only" onclick="showTab('usuarios')" data-tab="usuarios"><span class="tab-icon">⚙️</span>Usuarios</div>
+    <div class="tab superadmin-only" onclick="showTab('superadmin')" data-tab="superadmin"><span class="tab-icon">👑</span>Super Admin</div>
   </div>
 
   <!-- Main -->
@@ -353,6 +354,24 @@ select.filter-sel:focus{border-color:var(--am);}
         <button class="btn btn-primary" onclick="abrirModalUsuario()">+ Nuevo Usuario</button>
       </div>
       <div id="lista-usuarios"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+
+    <!-- SUPERADMIN -->
+    <div class="section" id="sec-superadmin">
+      <div class="toolbar" style="justify-content:space-between;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;color:var(--az);">👑 Panel Global</div>
+        <button class="btn btn-primary" onclick="abrirModalEmpresa()">+ Nueva Empresa</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr><th>Empresa</th><th>Email</th><th>Plan</th><th>Trial restante</th><th>Estado</th><th>Alta</th><th>Acciones</th></tr>
+          </thead>
+          <tbody id="tabla-empresas">
+            <tr><td colspan="7"><div class="loading"><div class="spinner"></div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
   </div><!-- /main -->
@@ -497,6 +516,56 @@ select.filter-sel:focus{border-color:var(--am);}
   </div>
 </div>
 
+<!-- MODAL EMPRESA -->
+<div class="modal-overlay" id="modal-empresa">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-empresa-title">Nueva Empresa Cliente</div>
+      <button class="modal-close" onclick="cerrarModal('modal-empresa')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="section-divider">🏢 Datos de la empresa</div>
+      <div class="form-row">
+        <div class="field"><label>Nombre empresa *</label><input type="text" id="e-nombre" placeholder="Asesoría Energética SL"></div>
+        <div class="field"><label>Email empresa *</label><input type="email" id="e-email" placeholder="info@empresa.com"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Teléfono</label><input type="tel" id="e-tel" placeholder="600 000 000"></div>
+        <div class="field"><label>Plan</label>
+          <select id="e-plan">
+            <option value="trial">🎁 Trial (30 días gratis)</option>
+            <option value="basico">Básico (19,90€/mes)</option>
+            <option value="profesional">Profesional (34,90€/mes)</option>
+            <option value="empresa">Empresa (59,90€/mes)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Días de trial</label><input type="number" id="e-dias" value="30" min="1" max="365"></div>
+        <div class="field"><label>Estado</label>
+          <select id="e-activa">
+            <option value="true">✅ Activa</option>
+            <option value="false">❌ Inactiva</option>
+          </select>
+        </div>
+      </div>
+      <div class="section-divider">👤 Usuario administrador</div>
+      <div class="form-row">
+        <div class="field"><label>Nombre admin *</label><input type="text" id="e-admin-nombre" placeholder="Nombre Apellido"></div>
+        <div class="field"><label>Email admin *</label><input type="email" id="e-admin-email" placeholder="admin@empresa.com"></div>
+      </div>
+      <div class="form-row full">
+        <div class="field"><label>Contraseña inicial *</label><input type="text" id="e-admin-pass" placeholder="Contraseña temporal"></div>
+      </div>
+      <input type="hidden" id="e-id">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModal('modal-empresa')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarEmpresa()">💾 Crear Empresa</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL USUARIO -->
 <div class="modal-overlay" id="modal-usuario">
   <div class="modal" style="max-width:440px">
@@ -620,6 +689,10 @@ function arrancarApp(data) {
   if (['admin','superadmin'].includes(data.usuario.rol)) {
     document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'flex');
   }
+  // Superadmin tab
+  if (data.usuario.rol === 'superadmin') {
+    document.querySelectorAll('.superadmin-only').forEach(el => el.style.display = 'flex');
+  }
 
   cargarDashboard();
   cargarClientes();
@@ -632,6 +705,7 @@ function showTab(tab) {
   document.querySelector('[data-tab="'+tab+'"]').classList.add('active');
   document.getElementById('sec-'+tab).classList.add('active');
   if (tab === 'usuarios') cargarUsuarios();
+  if (tab === 'superadmin') cargarEmpresas();
 }
 
 // ── DASHBOARD ──────────────────────────────────────────────────────
@@ -1166,6 +1240,131 @@ function extraerDatosFactura(texto) {
   if(finMatch)datos.finContrato=finMatch[1];
 
   return datos;
+}
+
+// ── SUPERADMIN ────────────────────────────────────────────────────
+let EMPRESAS = [];
+
+async function cargarEmpresas() {
+  try {
+    EMPRESAS = await api('GET', '/api/admin/empresas');
+    renderEmpresas();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function renderEmpresas() {
+  const tbody = document.getElementById('tabla-empresas');
+  if (!EMPRESAS.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="empty-icon">🏢</div><div class="empty-text">No hay empresas</div></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = EMPRESAS.map(e => {
+    const hoy = new Date();
+    const fin = new Date(e.trial_fin);
+    const dias = Math.ceil((fin - hoy) / (1000*60*60*24));
+    const trialOk = dias > 0;
+    const planBadge = e.plan === 'trial'
+      ? (trialOk ? `<span class="badge" style="background:#fef9c3;color:#713f12;">🎁 Trial ${dias}d</span>` : '<span class="badge badge-baja">⏰ Expirado</span>')
+      : `<span class="badge badge-activo">${e.plan}</span>`;
+    const estadoBadge = e.activa
+      ? '<span class="badge badge-activo">✅ Activa</span>'
+      : '<span class="badge badge-baja">❌ Inactiva</span>';
+    const alta = new Date(e.created_at).toLocaleDateString('es-ES');
+    return `<tr>
+      <td><strong>${e.nombre}</strong></td>
+      <td>${e.email}</td>
+      <td>${planBadge}</td>
+      <td>${trialOk ? dias + ' días' : '—'}</td>
+      <td>${estadoBadge}</td>
+      <td>${alta}</td>
+      <td>
+        <button class="btn btn-secondary btn-sm" onclick="editarEmpresa('${e.id}')">✏️</button>
+        <button class="btn btn-${e.activa ? 'danger' : 'secondary'} btn-sm" onclick="toggleEmpresa('${e.id}',${!e.activa})">${e.activa ? '🚫' : '✅'}</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function abrirModalEmpresa() {
+  document.getElementById('modal-empresa-title').textContent = 'Nueva Empresa Cliente';
+  document.getElementById('e-id').value = '';
+  document.getElementById('e-nombre').value = '';
+  document.getElementById('e-email').value = '';
+  document.getElementById('e-tel').value = '';
+  document.getElementById('e-plan').value = 'trial';
+  document.getElementById('e-dias').value = '30';
+  document.getElementById('e-activa').value = 'true';
+  document.getElementById('e-admin-nombre').value = '';
+  document.getElementById('e-admin-email').value = '';
+  document.getElementById('e-admin-pass').value = '';
+  // Show admin fields for new empresa
+  document.querySelector('.section-divider:last-of-type').style.display = 'block';
+  document.getElementById('modal-empresa').classList.add('open');
+}
+
+function editarEmpresa(id) {
+  const e = EMPRESAS.find(x => x.id===id);
+  if (!e) return;
+  document.getElementById('modal-empresa-title').textContent = 'Editar Empresa';
+  document.getElementById('e-id').value = e.id;
+  document.getElementById('e-nombre').value = e.nombre;
+  document.getElementById('e-email').value = e.email;
+  document.getElementById('e-tel').value = e.telefono || '';
+  document.getElementById('e-plan').value = e.plan;
+  document.getElementById('e-dias').value = '30';
+  document.getElementById('e-activa').value = String(e.activa);
+  document.getElementById('e-admin-nombre').value = '';
+  document.getElementById('e-admin-email').value = '';
+  document.getElementById('e-admin-pass').value = '';
+  document.getElementById('modal-empresa').classList.add('open');
+}
+
+async function guardarEmpresa() {
+  const id = document.getElementById('e-id').value;
+  const nombre = document.getElementById('e-nombre').value.trim();
+  const email = document.getElementById('e-email').value.trim();
+  if (!nombre || !email) { toast('Nombre y email son obligatorios', 'error'); return; }
+
+  if (!id) {
+    // Nueva empresa
+    const adminNombre = document.getElementById('e-admin-nombre').value.trim();
+    const adminEmail = document.getElementById('e-admin-email').value.trim();
+    const adminPass = document.getElementById('e-admin-pass').value;
+    if (!adminNombre || !adminEmail || !adminPass) { toast('Los datos del admin son obligatorios', 'error'); return; }
+    try {
+      await api('POST', '/api/admin/empresas', {
+        nombre, email, telefono: document.getElementById('e-tel').value,
+        plan: document.getElementById('e-plan').value,
+        dias_trial: parseInt(document.getElementById('e-dias').value) || 30,
+        admin_nombre: adminNombre, admin_email: adminEmail, admin_password: adminPass
+      });
+      cerrarModal('modal-empresa');
+      cargarEmpresas();
+      toast('✅ Empresa creada correctamente');
+    } catch(e) { toast(e.message, 'error'); }
+  } else {
+    // Editar empresa
+    try {
+      await api('PUT', '/api/admin/empresas/'+id, {
+        nombre, email, telefono: document.getElementById('e-tel').value,
+        plan: document.getElementById('e-plan').value,
+        activa: document.getElementById('e-activa').value === 'true'
+      });
+      cerrarModal('modal-empresa');
+      cargarEmpresas();
+      toast('✅ Empresa actualizada');
+    } catch(e) { toast(e.message, 'error'); }
+  }
+}
+
+async function toggleEmpresa(id, activa) {
+  const accion = activa ? 'activar' : 'desactivar';
+  if (!confirm('¿' + accion.charAt(0).toUpperCase() + accion.slice(1) + ' esta empresa?')) return;
+  try {
+    await api('PUT', '/api/admin/empresas/'+id, { activa });
+    cargarEmpresas();
+    toast(activa ? '✅ Empresa activada' : '🚫 Empresa desactivada');
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 // ── Init ───────────────────────────────────────────────────────────
