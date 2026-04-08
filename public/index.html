@@ -432,15 +432,18 @@ select.filter-sel:focus{border-color:var(--am);}
         <div class="form-row">
           <div class="field"><label>CUPs Luz</label><input type="text" id="c-cups-luz" placeholder="ES00315..."></div>
           <div class="field"><label>Comercializadora</label>
-            <select id="c-com-luz">
+            <select id="c-com-luz" onchange="toggleComLuz()">
               <option value="">Seleccionar...</option>
               <option>Iberdrola</option><option>Endesa</option><option>Naturgy</option>
               <option>EDP</option><option>Repsol Luz</option><option>Holaluz</option>
-              <option>Eleia Energia</option><option>Visalia</option>
+              <option>Visalia</option>
               <option>Gasiluz</option><option>Gana Energia</option>
-              <option>Plenitude</option><option>Lucera</option><option>Otra</option>
+              <option>Plenitude</option><option>Lucera</option><option value="otra">Otra (escribir)</option>
             </select>
           </div>
+        </div>
+        <div class="form-row" id="bloque-com-luz-manual" style="display:none">
+          <div class="field" style="grid-column:1/-1"><label>Nombre comercializadora</label><input type="text" id="c-com-luz-manual" placeholder="Escribe el nombre..."></div>
         </div>
         <div class="form-row">
           <div class="field"><label>Tarifa</label>
