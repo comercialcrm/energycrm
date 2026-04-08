@@ -269,7 +269,7 @@ app.post('/api/admin/empresas', auth, soloSuperAdmin, async (req, res) => {
 
   // Crear empresa
   const trial_fin = new Date();
-  trial_fin.setDate(trial_fin.getDate() + (dias_trial || 90));
+  trial_fin.setDate(trial_fin.getDate() + (dias_trial || 30));
 
   const { data: empresa, error: e1 } = await supabase.from('empresas').insert({
     nombre, email, telefono, plan: plan || 'trial', trial_fin
