@@ -37,8 +37,8 @@ async function auth(req, res, next) {
     .eq('id', sesion.usuarios.empresa_id)
     .single();
 
-  if (!empresa?.activa) return res.status(403).json({ error: 'Empresa desactivada' });
-  if (new Date(empresa.trial_fin) < new Date() && empresa.plan === 'trial') {
+  if (!empresa?.activa && sesion.usuarios.rol !== 'superadmin') return res.status(403).json({ error: 'Empresa desactivada' });
+  if (new Date(empresa.trial_fin) < new Date() && empresa.plan === 'trial' && sesion.usuarios.rol !== 'superadmin') {
     return res.status(403).json({ error: 'Trial expirado', trial_expirado: true });
   }
 
