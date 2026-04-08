@@ -366,6 +366,13 @@ select.filter-sel:focus{border-color:var(--am);}
       <button class="modal-close" onclick="cerrarModal('modal-cliente')">✕</button>
     </div>
     <div class="modal-body">
+      <!-- LECTOR PDF -->
+      <div style="background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border:2px dashed #00BCD4;border-radius:12px;padding:16px;margin-bottom:20px;text-align:center;">
+        <div style="font-size:13px;color:#1A2B4A;font-weight:600;margin-bottom:10px;">📄 ¿Tienes la factura en PDF? Cárgala y rellenamos los datos automáticamente</div>
+        <input type="file" id="pdf-factura-input" accept=".pdf" style="display:none" onchange="leerFacturaPDF()">
+        <button class="btn btn-secondary" onclick="document.getElementById('pdf-factura-input').click()">📎 Cargar factura PDF</button>
+        <div id="pdf-status" style="margin-top:8px;font-size:12px;color:#64748b;display:none"></div>
+      </div>
       <div class="section-divider">📋 Datos generales</div>
       <div class="form-row">
         <div class="field"><label>Nombre / Razón social *</label><input type="text" id="c-nombre"></div>
@@ -974,6 +981,192 @@ async function desactivarUsuario(id) {
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
   overlay.addEventListener('click', e => { if(e.target===overlay) overlay.classList.remove('open'); });
 });
+
+// ── LECTOR FACTURAS PDF ────────────────────────────────────────────
+async function leerFacturaPDF() {
+  const file = document.getElementById('pdf-factura-input').files[0];
+  if (!file) return;
+  const status = document.getElementById('pdf-status');
+  status.style.display = 'block';
+  status.textContent = '⏳ Leyendo factura...';
+
+  try {
+    // Load PDF.js
+    if (!window.pdfjsLib) {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    let texto = '';
+    for (let i = 1; i <= Math.min(pdf.numPages, 3); i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      texto += content.items.map(it => it.str).join(' ') + ' ';
+    }
+
+    const datos = extraerDatosFactura(texto);
+    aplicarDatosFactura(datos);
+
+    const encontrados = Object.keys(datos).length;
+    status.textContent = encontrados > 0
+      ? `✅ ${encontrados} campos detectados y rellenados automáticamente`
+      : '⚠️ No se pudieron extraer datos. Rellena manualmente.';
+    status.style.color = encontrados > 0 ? '#166534' : '#9a3412';
+
+  } catch(e) {
+    status.textContent = '❌ Error al leer el PDF. Rellena manualmente.';
+    status.style.color = '#991b1b';
+    console.error(e);
+  }
+}
+
+function aplicarDatosFactura(d) {
+  if (d.nombre)    document.getElementById('c-nombre').value = d.nombre;
+  if (d.nif)       document.getElementById('c-nif').value = d.nif;
+  if (d.dir)       document.getElementById('c-dir').value = d.dir;
+  if (d.cups)      document.getElementById('c-cups-luz').value = d.cups;
+  if (d.tarifa)    document.getElementById('c-tarifa-luz').value = d.tarifa;
+  if (d.comercial) document.getElementById('c-com-luz').value = d.comercial;
+  if (d.finContrato) {
+    // Convertir DD/MM/YYYY a YYYY-MM-DD
+    const parts = d.finContrato.split(/[\/\-]/);
+    if (parts.length === 3) {
+      const iso = parts[2].length === 4
+        ? `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`
+        : `20${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+      document.getElementById('c-venc-luz').value = iso;
+    }
+  }
+  if (d.potencias && d.potencias.length > 0) {
+    document.getElementById('c-potencias').value = d.potencias.join(';');
+  }
+  toggleTipo();
+}
+
+function extraerDatosFactura(texto) {
+  var t = texto.replace(/\s+/g, ' ');
+  var datos = {};
+
+  // Comercializadora
+  var comMap = [
+    { name:'Iberdrola',          keys:['IBERDROLA CLIENTES','Iberdrola Clientes','iberdrola'] },
+    { name:'Endesa',             keys:['Endesa Energ','endesa energia'] },
+    { name:'Naturgy',            keys:['Naturgy','naturgy','Gas Natural Fenosa'] },
+    { name:'EDP',                keys:['EDP Energ','edp energ'] },
+    { name:'Repsol Luz',         keys:['Repsol Comercializadora','Repsol Luz','Repsol Electric'] },
+    { name:'Holaluz',            keys:['Holaluz'] },
+    { name:'Plenitude',          keys:['Plenitude'] },
+    { name:'Lucera',             keys:['Lucera'] },
+    { name:'Viesgo',             keys:['Viesgo'] },
+    { name:'Electrica Baleares', keys:['Electrica Baleares','Eléctrica Baleares','electricabaleares'] },
+    { name:'Visalia',            keys:['VISALIA ENERGIA','Visalia Energ'] },
+    { name:'Gasiluz',            keys:['Gasiluz'] },
+    { name:'Energia Mallorquina',keys:['Energia Mallorquina','Energía Mallorquina','ELECTRICA SOLLERENSE','energiamallorquina'] },
+  ];
+  for (var ci=0;ci<comMap.length;ci++) {
+    for (var ki=0;ki<comMap[ci].keys.length;ki++) {
+      if (t.toLowerCase().indexOf(comMap[ci].keys[ki].toLowerCase())!==-1) {
+        datos.comercial=comMap[ci].name; break;
+      }
+    }
+    if (datos.comercial) break;
+  }
+
+  // CUPS
+  var cupsMatch = t.match(/ES\s*[0-9]{4}\s*[0-9A-Z]{4}\s*[0-9A-Z]{4}\s*[0-9A-Z]{4}\s*[A-Z0-9]{2,4}\s*[A-Z]?/i);
+  if (cupsMatch) datos.cups = cupsMatch[0].replace(/\s/g,'').toUpperCase();
+
+  // NIF/CIF/DNI
+  var nifExplicit =
+    t.match(/\bNIF titular del contrato[:\s]+([A-Z0-9]{8,9})\b/i) ||
+    t.match(/\bNIF[:\s]+([A-Z0-9]{8,9})\b/i) ||
+    t.match(/\bDNI[:\s]+([0-9]{8}[A-Z])\b/i) ||
+    t.match(/\bDNI\/CIF[:\s]+([A-Z0-9]{8,9})\b/i) ||
+    t.match(/\bNIF\/CIF\s*([A-Z]{0,2}[A-Z][0-9]{7,8}[A-Z0-9]?)\b/i);
+  if (nifExplicit) datos.nif = nifExplicit[1].toUpperCase();
+
+  // Nombre/Titular
+  var titularMatch =
+    t.match(/\bTitular\b\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑA-Za-záéíóúñ\s]{5,60}?)(?:\s{2,}|Potencia|Direcci|NIF|DNI|Plan)/i) ||
+    t.match(/Titular del contrato[:\s]+([A-ZÁÉÍÓÚÑC][A-ZÁÉÍÓÚÑA-Za-záéíóúñ\/\s',.0-9-]{3,70}?)(?:\s{2,}|NIF|CIF|DNI|Empresa)/i) ||
+    t.match(/Nombre y Apellidos del titular\s+([A-ZÁÉÍÓÚÑ][A-Za-záéíóúñ\s]{5,60}?)(?:\s{2,}|DNI|NIF|Cuenta)/i) ||
+    t.match(/Esta es tu factura de luz,\s+([A-ZÁÉÍÓÚÑ][A-Za-záéíóúñ\s]{5,60}?)(?:\s{2,}|CUPS|Nº)/i) ||
+    t.match(/Titular[:\s]+([A-ZAÉÍÓÚÑC][A-Za-záéíóúñ\/\s,.0-9-]{3,70}?)(?:\s{2,}|NIF|CIF|Direcci)/i);
+  if (titularMatch && titularMatch[1]) datos.nombre = titularMatch[1].trim().replace(/\s+/g,' ');
+
+  // Dirección
+  var dirPatterns = [
+    /Direcci[oó]n de suministro[:\s]+([A-ZÁÉÍÓÚÑC\/][^\n]{5,80}?)(?:\s{2,}|Plan|NIF|CUPS|Peaje|Titular)/i,
+    /Direcci[oó]n del punto de suministro[:\s]+([A-ZÁÉÍÓÚÑ][^\n]{5,80}?)(?:\s{2,}|Titular|NIF|Fecha)/i,
+    /Direcci[oó]n[:\s]+([A-Za-z\/\s,.0-9-]{5,80}?)(?:\s{2,}|Poblaci|Tarifa|CUPS|Contrato)/i,
+  ];
+  for (var dp=0;dp<dirPatterns.length;dp++) {
+    var dm=t.match(dirPatterns[dp]);
+    if (dm&&dm[1]&&dm[1].trim().length>5){datos.dir=dm[1].trim().replace(/\s+/g,' ');break;}
+  }
+
+  // Tarifa
+  var tarifaPatterns=[
+    /Peaje de acceso a la red[^:]*:\s*(\d\.\d\s*TD)/i,
+    /Peaje de acceso\s+(\d\.\d\s*TD)/i,
+    /Peaje de transporte[^:]*:\s*(\d\.\d\s*TD)/i,
+    /Tarifa de acceso[:\s]+(\d\.\d\s*TD)/i,
+    /\b(2\.0\s*TD|3\.0\s*TD|6\.[1-4]\s*TD)\b/i,
+  ];
+  for (var tp=0;tp<tarifaPatterns.length;tp++){
+    var tm=t.match(tarifaPatterns[tp]);
+    if (tm){datos.tarifa=tm[1].replace(/\s/g,'').toUpperCase();break;}
+  }
+
+  // Potencias
+  var potencias=[];
+  var pot3td=t.match(/P1\s+([\d,\.]+)[;,]\s*P2\s+([\d,\.]+)[;,]\s*P3\s+([\d,\.]+)[;,]\s*P4\s+([\d,\.]+)[;,]\s*P5\s+([\d,\.]+)[;,]\s*P6\s+([\d,\.]+)/i);
+  if (pot3td){for(var pi=1;pi<=6;pi++)potencias.push(parseFloat(pot3td[pi].replace(',','.')));}
+
+  if(potencias.length===0){
+    var ibPunta=t.match(/Potencia punta[:\s]+([\d,\.]+)\s*kW/i);
+    var ibValle=t.match(/Potencia valle[:\s]+([\d,\.]+)\s*kW/i);
+    if(ibPunta)potencias.push(parseFloat(ibPunta[1].replace(',','.')));
+    if(ibValle)potencias.push(parseFloat(ibValle[1].replace(',','.')));
+  }
+  if(potencias.length===0){
+    var repPunta=t.match(/Punta[:\s]+([\d,\.]+)\s*kW/i);
+    var repValle=t.match(/Valle[:\s]+([\d,\.]+)\s*kW/i);
+    if(repPunta)potencias.push(parseFloat(repPunta[1].replace(',','.')));
+    if(repValle)potencias.push(parseFloat(repValle[1].replace(',','.')));
+  }
+  if(potencias.length===0){
+    var vis6=t.match(/P1[:\s]+([\d,\.]+)\s*kW[^P]*P2[:\s]+([\d,\.]+)\s*kW[^P]*P3[:\s]+([\d,\.]+)\s*kW[^P]*P4[:\s]+([\d,\.]+)\s*kW[^P]*P5[:\s]+([\d,\.]+)\s*kW[^P]*P6[:\s]+([\d,\.]+)\s*kW/i);
+    if(vis6){for(var vi=1;vi<=6;vi++)potencias.push(parseFloat(vis6[vi].replace(',','.')));}
+    else{
+      var vis2=t.match(/P1[:\s]+([\d,\.]+)\s*kW[^P]*P2[:\s]+([\d,\.]+)\s*kW/i);
+      if(vis2){potencias.push(parseFloat(vis2[1].replace(',','.')));potencias.push(parseFloat(vis2[2].replace(',','.')));}
+    }
+  }
+  if(potencias.length===0){
+    var eb=t.match(/Potencia contratada\s+([\d,\.]+)\s*kW\s*-\s*([\d,\.]+)\s*kW/i);
+    if(eb){potencias.push(parseFloat(eb[1].replace(',','.')));potencias.push(parseFloat(eb[2].replace(',','.')));}
+  }
+  if(potencias.length>0)datos.potencias=potencias;
+
+  // Fin de contrato
+  var finMatch=
+    t.match(/Vigencia hasta[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i)||
+    t.match(/Fecha final del contrato[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i)||
+    t.match(/Fecha fin de contrato[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i)||
+    t.match(/Fecha de fin de contrato[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i)||
+    t.match(/Fin de contrato[^:]*[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i);
+  if(finMatch)datos.finContrato=finMatch[1];
+
+  return datos;
+}
 
 // ── Init ───────────────────────────────────────────────────────────
 init();
