@@ -329,6 +329,8 @@ select.filter-sel:focus{border-color:var(--am);}
         <select class="filter-sel admin-only" id="f-comercial" onchange="filtrar()" style="display:none">
           <option value="">👤 Todos los comerciales</option>
         </select>
+        <button class="btn btn-secondary" onclick="exportarCSV()">📥 Exportar CSV</button>
+        <button class="btn btn-secondary" onclick="exportarCSV()">📥 Exportar CSV</button>
         <button class="btn btn-primary" onclick="abrirModalCliente()">+ Nuevo Cliente</button>
       </div>
       <div class="table-wrap">
@@ -1538,7 +1540,45 @@ async function toggleEmpresa(id, activa) {
   try {
     await api('PUT', '/api/admin/empresas/'+id, { activa });
     cargarEmpresas();
-    toast(activa ? '✅ Empresa activada' : '🚫 Empresa desactivada');
+    toast(activa ? '✅ Emp
+// ── EXPORTAR CSV ─────────────────────────────────────────────────
+function exportarCSV() {
+  if (!CLIENTES.length) { toast('No hay clientes para exportar', 'error'); return; }
+  const q = (document.getElementById('search').value||'').toLowerCase();
+  const fe = document.getElementById('f-estado').value;
+  const ft = document.getElementById('f-tipo').value;
+  const fcEl = document.getElementById('f-comercial');
+  const fc = fcEl ? fcEl.value : '';
+  const list = CLIENTES.filter(c => {
+    const txt = (c.nombre+c.nif+c.cups_luz+c.cups_gas+c.comercializadora_luz+c.comercializadora_gas).toLowerCase();
+    return (!q||txt.includes(q))&&(!fe||c.estado===fe)&&(!ft||c.tipo===ft||c.tipo==='ambos')&&(!fc||c.comercial_id===fc);
+  });
+  const h = ['Nombre','NIF/CIF','Telefono','Email','Direccion','Tipo','Estado','CUPs Luz','Comercializadora Luz','Tarifa Luz','Vencimiento Luz','CUPs Gas','Comercializadora Gas','Tarifa Gas','Vencimiento Gas','Potencias kW','Comision EUR','Tipo Comision','Comercial','Notas'];
+  const r = list.map(c => [
+    c.nombre||'', c.nif||'', c.telefono||'', c.email||'', c.direccion||'',
+    c.tipo||'', c.estado||'',
+    c.cups_luz||'', c.comercializadora_luz||'', c.tarifa_luz||'',
+    c.vencimiento_luz ? new Date(c.vencimiento_luz).toLocaleDateString('es-ES') : '',
+    c.cups_gas||'', c.comercializadora_gas||'', c.tarifa_gas||'',
+    c.vencimiento_gas ? new Date(c.vencimiento_gas).toLocaleDateString('es-ES') : '',
+    c.potencias ? c.potencias.join(';') : '',
+    c.comision_importe||'', c.comision_tipo||'',
+    c.usuarios ? c.usuarios.nombre : (c.comercial_nombre||''),
+    c.notas||''
+  ]);
+  const csv = '\uFEFF' + [h,...r].map(row => row.map(v => '"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'clientes_' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('CSV exportado (' + list.length + ' clientes)');
+}
+resa activada' : '🚫 Empresa desactivada');
   } catch(e) { toast(e.message, 'error'); }
 }
 
