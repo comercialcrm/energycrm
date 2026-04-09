@@ -975,7 +975,16 @@ async function editarCliente(id) {
   document.getElementById('c-com-fecha').value = c.comision_fecha||'';
   document.getElementById('c-notas').value = c.notas||'';
   toggleTipo();
-  if (c.comercial_id) document.getElementById('c-comercial-asignado').value = c.comercial_id;
+
+  // Cargar comerciales y LUEGO asignar el valor correcto
+  const sel = document.getElementById('c-comercial-asignado');
+  try {
+    const usuarios = await api('GET', '/api/usuarios');
+    sel.innerHTML = '<option value="">Sin asignar</option>' +
+      (usuarios||[]).map(u => `<option value="${u.id}">${u.nombre} (${u.rol})</option>`).join('');
+    document.getElementById('bloque-comercial-asignado').style.display = 'block';
+  } catch(e) {}
+  if (c.comercial_id) sel.value = c.comercial_id;
 
   // Cargar documentos
   document.getElementById('bloque-docs').style.display = 'block';
