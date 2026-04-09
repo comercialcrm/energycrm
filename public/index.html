@@ -329,12 +329,6 @@ select.filter-sel:focus{border-color:var(--am);}
         <select class="filter-sel admin-only" id="f-comercial" onchange="filtrar()" style="display:none">
           <option value="">👤 Todos los comerciales</option>
         </select>
-        <button class="btn btn-secondary" onclick="exportarExcel()">📥 Exportar Excel</button>
-        <button class="btn btn-secondary" onclick="descargarPlantilla()">📋 Plantilla</button>
-        <label class="btn btn-secondary" style="cursor:pointer">
-          📤 Importar Excel
-          <input type="file" id="import-input" accept=".xlsx,.csv" style="display:none" onchange="importarExcel(this)">
-        </label>
         <button class="btn btn-primary" onclick="abrirModalCliente()">+ Nuevo Cliente</button>
       </div>
       <div class="table-wrap">
@@ -1548,112 +1542,6 @@ async function toggleEmpresa(id, activa) {
   } catch(e) { toast(e.message, 'error'); }
 }
 
-// ── XLSX helper ───────────────────────────────────────────────────
-function cargarSheetJS() {
-  return new Promise((res, rej) => {
-    if (window.XLSX) return res();
-    const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-    s.onload = () => res();
-    s.onerror = () => rej(new Error('No se pudo cargar SheetJS'));
-    document.head.appendChild(s);
-  });
-}
-
-async function exportarExcel() {
-  if (!CLIENTES.length) { toast('No hay clientes para exportar', 'error'); return; }
-  toast('Generando Excel...');
-  try { await cargarSheetJS(); } catch(e) { exportarCSV(); return; }
-  const fcEl = document.getElementById('f-comercial');
-  const fc = fcEl ? fcEl.value : '';
-  const q = (document.getElementById('search').value||'').toLowerCase();
-  const fe = document.getElementById('f-estado').value;
-  const ft = document.getElementById('f-tipo').value;
-  let list = CLIENTES.filter(c => {
-    const txt = (c.nombre+c.nif+c.cups_luz+c.cups_gas+c.comercializadora_luz+c.comercializadora_gas).toLowerCase();
-    return (!q||txt.includes(q))&&(!fe||c.estado===fe)&&(!ft||c.tipo===ft||c.tipo==='ambos')&&(!fc||c.comercial_id===fc);
-  });
-  const headers = ['Nombre','NIF/CIF','Telefono','Email','Direccion','Tipo','Estado','CUPs Luz','Comercializadora Luz','Tarifa Luz','Vencimiento Luz','CUPs Gas','Comercializadora Gas','Tarifa Gas','Vencimiento Gas','Potencias kW','Comision EUR','Tipo Comision','Comercial','Notas'];
-  const rows = list.map(c => [c.nombre||'',c.nif||'',c.telefono||'',c.email||'',c.direccion||'',c.tipo||'',c.estado||'',c.cups_luz||'',c.comercializadora_luz||'',c.tarifa_luz||'',c.vencimiento_luz?new Date(c.vencimiento_luz).toLocaleDateString('es-ES'):'',c.cups_gas||'',c.comercializadora_gas||'',c.tarifa_gas||'',c.vencimiento_gas?new Date(c.vencimiento_gas).toLocaleDateString('es-ES'):'',c.potencias?c.potencias.join(';'):'',c.comision_importe||'',c.comision_tipo||'',c.usuarios?c.usuarios.nombre:(c.comercial_nombre||''),c.notas||'']);
-  const ws = XLSX.utils.aoa_to_sheet([headers,...rows]);
-  ws['!cols'] = headers.map((_,i)=>({wch:i===0?30:16}));
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,'Clientes');
-  XLSX.writeFile(wb,'clientes_'+new Date().toISOString().slice(0,10)+'.xlsx');
-  toast('Excel exportado ('+list.length+' clientes)');
-}
-
-function exportarCSV() {
-  const q = (document.getElementById('search').value||'').toLowerCase();
-  const fe = document.getElementById('f-estado').value;
-  const ft = document.getElementById('f-tipo').value;
-  const fcEl = document.getElementById('f-comercial');
-  const fc = fcEl ? fcEl.value : '';
-  let list = CLIENTES.filter(c => {
-    const txt = (c.nombre+c.nif+c.cups_luz+c.cups_gas).toLowerCase();
-    return (!q||txt.includes(q))&&(!fe||c.estado===fe)&&(!ft||c.tipo===ft||c.tipo==='ambos')&&(!fc||c.comercial_id===fc);
-  });
-  const h = ['Nombre','NIF','Telefono','Email','Direccion','Tipo','Estado','CUPs Luz','Com. Luz','Tarifa Luz','Venc. Luz','CUPs Gas','Com. Gas','Tarifa Gas','Venc. Gas','Potencias','Comision','Tipo Com.','Comercial','Notas'];
-  const r = list.map(c=>[c.nombre||'',c.nif||'',c.telefono||'',c.email||'',c.direccion||'',c.tipo||'',c.estado||'',c.cups_luz||'',c.comercializadora_luz||'',c.tarifa_luz||'',c.vencimiento_luz?new Date(c.vencimiento_luz).toLocaleDateString('es-ES'):'',c.cups_gas||'',c.comercializadora_gas||'',c.tarifa_gas||'',c.vencimiento_gas?new Date(c.vencimiento_gas).toLocaleDateString('es-ES'):'',c.potencias?c.potencias.join(';'):'',c.comision_importe||'',c.comision_tipo||'',c.usuarios?c.usuarios.nombre:(c.comercial_nombre||''),c.notas||'']);
-  const csv = '﻿'+[h,...r].map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';')).join('
-');
-  const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href=url; a.download='clientes_'+new Date().toISOString().slice(0,10)+'.csv';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  toast('Exportado ('+list.length+' clientes)');
-}
-
-async function descargarPlantilla() {
-  toast('Generando plantilla...');
-  try { await cargarSheetJS(); } catch(e) { toast('Error cargando libreria', 'error'); return; }
-  const h = ['Nombre','NIF/CIF','Telefono','Email','Direccion','Tipo (luz/gas/ambos)','Estado (activo/incidencia/baja)','CUPs Luz','Comercializadora Luz','Tarifa Luz (2.0TD/3.0TD)','Vencimiento Luz (DD/MM/AAAA)','CUPs Gas','Comercializadora Gas','Tarifa Gas (RL1/RL2)','Vencimiento Gas (DD/MM/AAAA)','Potencias kW (P1;P2;P3)','Comision EUR','Tipo Comision (unico/mensual/anual)','Notas'];
-  const ej = ['Comunidad Ejemplo','H12345678','600123456','admin@ejemplo.com','Calle Mayor 1 Madrid','luz','activo','ES0031500123456789AB','Iberdrola','2.0TD','31/12/2026','','','','','5.5;5.5','150','anual','Ejemplo'];
-  const ws = XLSX.utils.aoa_to_sheet([h,ej]);
-  ws['!cols'] = h.map(()=>({wch:22}));
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,'Plantilla');
-  XLSX.writeFile(wb,'plantilla_importar_clientes.xlsx');
-  toast('Plantilla descargada');
-}
-
-async function importarExcel(input) {
-  const file = input.files[0];
-  if (!file) return;
-  toast('Leyendo archivo...');
-  try { await cargarSheetJS(); } catch(e) { toast('Error cargando libreria', 'error'); return; }
-  const reader = new FileReader();
-  reader.onload = async e => {
-    try {
-      const wb = XLSX.read(e.target.result,{type:'array',cellDates:true});
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-      if (rows.length < 2) { toast('Archivo vacio','error'); return; }
-      const data = rows.slice(1).filter(r=>r[0]&&String(r[0]).trim());
-      if (!data.length) { toast('No hay datos','error'); return; }
-      let ok=0,err=0;
-      for (const r of data) {
-        const pf = v => {
-          if (!v) return null;
-          if (v instanceof Date) return v.toISOString().slice(0,10);
-          const s=String(v).trim();
-          const m=s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
-          if (m) return (m[3].length===2?'20'+m[3]:m[3])+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
-          return null;
-        };
-        const potStr=String(r[15]||'').trim();
-        const potencias=potStr?potStr.split(';').map(p=>parseFloat(p)).filter(p=>!isNaN(p)):null;
-        const body={nombre:String(r[0]||'').trim(),nif:String(r[1]||'').trim(),telefono:String(r[2]||'').trim(),email:String(r[3]||'').trim(),direccion:String(r[4]||'').trim(),tipo:String(r[5]||'luz').toLowerCase()||'luz',estado:String(r[6]||'activo').toLowerCase()||'activo',cups_luz:String(r[7]||'').trim(),comercializadora_luz:String(r[8]||'').trim(),tarifa_luz:String(r[9]||'').trim(),vencimiento_luz:pf(r[10]),cups_gas:String(r[11]||'').trim(),comercializadora_gas:String(r[12]||'').trim(),tarifa_gas:String(r[13]||'').trim(),vencimiento_gas:pf(r[14]),potencias,comision_importe:parseFloat(r[16])||null,comision_tipo:String(r[17]||'unico').toLowerCase()||'unico',notas:String(r[18]||'').trim()};
-        try { const n=await api('POST','/api/clientes',body); CLIENTES.unshift(n); ok++; } catch(e){err++;}
-      }
-      renderClientes(); cargarDashboard(); input.value='';
-      toast('Importados: '+ok+' clientes'+(err>0?' | Errores: '+err:''),ok>0?'success':'error');
-    } catch(e) { toast('Error al leer el archivo','error'); console.error(e); }
-  };
-  reader.readAsArrayBuffer(file);
-}
 
 // ── Init ───────────────────────────────────────────────────────────
 init();
