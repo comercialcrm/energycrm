@@ -326,6 +326,9 @@ select.filter-sel:focus{border-color:var(--am);}
           <option value="luz">⚡ Luz</option>
           <option value="gas">🔥 Gas</option>
         </select>
+        <select class="filter-sel admin-only" id="f-comercial" onchange="filtrar()" style="display:none">
+          <option value="">👤 Todos los comerciales</option>
+        </select>
         <button class="btn btn-primary" onclick="abrirModalCliente()">+ Nuevo Cliente</button>
       </div>
       <div class="table-wrap">
@@ -812,6 +815,15 @@ async function cargarClientes() {
   try {
     CLIENTES = await api('GET', '/api/clientes');
     renderClientes();
+    // Poblar filtro de comerciales (solo admin)
+    if (ME && ['admin','superadmin'].includes(ME.usuario.rol)) {
+      const sel = document.getElementById('f-comercial');
+      sel.style.display = 'block';
+      const usuarios = await api('GET', '/api/usuarios');
+      const comerciales = (usuarios||[]);
+      sel.innerHTML = '<option value="">👤 Todos los comerciales</option>' +
+        comerciales.map(u => `<option value="${u.id}">${u.nombre}</option>`).join('');
+    }
   } catch(e) { toast(e.message, 'error'); }
 }
 
@@ -819,11 +831,12 @@ function renderClientes() {
   const q = (document.getElementById('search').value||'').toLowerCase();
   const fe = document.getElementById('f-estado').value;
   const ft = document.getElementById('f-tipo').value;
+  const fc = document.getElementById('f-comercial').value;
   const hoy = new Date(); const en30 = new Date(); en30.setDate(hoy.getDate()+30); const en90 = new Date(); en90.setDate(hoy.getDate()+90);
 
   let list = CLIENTES.filter(c => {
     const txt = (c.nombre+c.nif+c.cups_luz+c.cups_gas+c.comercializadora_luz+c.comercializadora_gas).toLowerCase();
-    return (!q || txt.includes(q)) && (!fe || c.estado===fe) && (!ft || c.tipo===ft || c.tipo==='ambos');
+    return (!q || txt.includes(q)) && (!fe || c.estado===fe) && (!ft || c.tipo===ft || c.tipo==='ambos') && (!fc || c.comercial_id===fc);
   });
 
   // Sort: bajas last, urgentes first
