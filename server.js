@@ -30,7 +30,6 @@ async function auth(req, res, next) {
 
   if (!sesion) return res.status(401).json({ error: 'Sesión expirada' });
 
-  // Verificar empresa activa y trial
   const { data: empresa } = await supabase
     .from('empresas')
     .select('*')
@@ -58,7 +57,6 @@ function soloAdmin(req, res, next) {
 // AUTH
 // ══════════════════════════════════════════════════════════════════
 
-// Login
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email y contraseña requeridos' });
@@ -75,7 +73,6 @@ app.post('/api/login', async (req, res) => {
   const ok = await bcrypt.compare(password, usuario.password_hash);
   if (!ok) return res.status(401).json({ error: 'Email o contraseña incorrectos' });
 
-  // Verificar empresa
   const { data: empresa } = await supabase
     .from('empresas')
     .select('*')
@@ -89,7 +86,6 @@ app.post('/api/login', async (req, res) => {
     return res.status(403).json({ error: 'Tu período de prueba ha finalizado. Contacta con soporte para continuar.', trial_expirado: true });
   }
 
-  // Crear sesión
   const token = uuidv4() + uuidv4();
   await supabase.from('sesiones').insert({ usuario_id: usuario.id, token });
   await supabase.from('usuarios').update({ ultimo_acceso: new Date() }).eq('id', usuario.id);
@@ -101,14 +97,12 @@ app.post('/api/login', async (req, res) => {
   });
 });
 
-// Logout
 app.post('/api/logout', auth, async (req, res) => {
   const token = req.headers['authorization']?.replace('Bearer ', '');
   await supabase.from('sesiones').delete().eq('token', token);
   res.json({ ok: true });
 });
 
-// Me
 app.get('/api/me', auth, (req, res) => {
   const dias = Math.ceil((new Date(req.empresa.trial_fin) - new Date()) / (1000 * 60 * 60 * 24));
   res.json({
@@ -121,7 +115,6 @@ app.get('/api/me', auth, (req, res) => {
 // CLIENTES
 // ══════════════════════════════════════════════════════════════════
 
-// Listar clientes
 app.get('/api/clientes', auth, async (req, res) => {
   let query = supabase
     .from('clientes')
@@ -129,7 +122,6 @@ app.get('/api/clientes', auth, async (req, res) => {
     .eq('empresa_id', req.empresa.id)
     .order('nombre');
 
-  // Comercial solo ve los suyos
   if (req.usuario.rol === 'comercial') {
     query = query.eq('comercial_id', req.usuario.id);
   }
@@ -139,7 +131,6 @@ app.get('/api/clientes', auth, async (req, res) => {
   res.json(data);
 });
 
-// Crear cliente
 app.post('/api/clientes', auth, async (req, res) => {
   const cliente = {
     ...req.body,
@@ -151,7 +142,6 @@ app.post('/api/clientes', auth, async (req, res) => {
   res.json(data);
 });
 
-// Actualizar cliente
 app.put('/api/clientes/:id', auth, async (req, res) => {
   const { id } = req.params;
   const { data: existing } = await supabase.from('clientes').select('*').eq('id', id).eq('empresa_id', req.empresa.id).single();
@@ -164,7 +154,6 @@ app.put('/api/clientes/:id', auth, async (req, res) => {
   res.json(data);
 });
 
-// Eliminar cliente
 app.delete('/api/clientes/:id', auth, soloAdmin, async (req, res) => {
   const { id } = req.params;
   await supabase.from('clientes').delete().eq('id', id).eq('empresa_id', req.empresa.id);
@@ -220,6 +209,20 @@ app.get('/api/usuarios', auth, soloAdmin, async (req, res) => {
 app.post('/api/usuarios', auth, soloAdmin, async (req, res) => {
   const { nombre, email, password, rol } = req.body;
   if (!nombre || !email || !password) return res.status(400).json({ error: 'Faltan campos' });
+
+  // ── LÍMITE: solo 1 admin por empresa ──────────────────────────
+  if (rol === 'admin') {
+    const { data: adminsExistentes } = await supabase
+      .from('usuarios')
+      .select('id')
+      .eq('empresa_id', req.empresa.id)
+      .eq('rol', 'admin')
+      .eq('activo', true);
+    if (adminsExistentes && adminsExistentes.length >= 1) {
+      return res.status(400).json({ error: 'Solo se permite 1 administrador por empresa. Contacta con soporte para ampliar.' });
+    }
+  }
+
   const password_hash = await bcrypt.hash(password, 10);
   const { data, error } = await supabase.from('usuarios').insert({
     nombre, email: email.toLowerCase(), password_hash,
@@ -248,7 +251,7 @@ app.delete('/api/usuarios/:id', auth, soloAdmin, async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════
-// SUPERADMIN - Gestión de empresas
+// SUPERADMIN
 // ══════════════════════════════════════════════════════════════════
 
 function soloSuperAdmin(req, res, next) {
@@ -256,18 +259,15 @@ function soloSuperAdmin(req, res, next) {
   next();
 }
 
-// Listar todas las empresas
 app.get('/api/admin/empresas', auth, soloSuperAdmin, async (req, res) => {
   const { data, error } = await supabase.from('empresas').select('*').order('created_at', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 
-// Crear empresa + admin
 app.post('/api/admin/empresas', auth, soloSuperAdmin, async (req, res) => {
   const { nombre, email, telefono, admin_nombre, admin_email, admin_password, plan, dias_trial } = req.body;
 
-  // Crear empresa
   const trial_fin = new Date();
   trial_fin.setDate(trial_fin.getDate() + (dias_trial || 30));
 
@@ -276,7 +276,6 @@ app.post('/api/admin/empresas', auth, soloSuperAdmin, async (req, res) => {
   }).select().single();
   if (e1) return res.status(500).json({ error: e1.message });
 
-  // Crear usuario admin
   const password_hash = await bcrypt.hash(admin_password, 10);
   const { data: usuario, error: e2 } = await supabase.from('usuarios').insert({
     empresa_id: empresa.id, nombre: admin_nombre,
@@ -287,7 +286,6 @@ app.post('/api/admin/empresas', auth, soloSuperAdmin, async (req, res) => {
   res.json({ empresa, usuario });
 });
 
-// Actualizar empresa
 app.put('/api/admin/empresas/:id', auth, soloSuperAdmin, async (req, res) => {
   const { data, error } = await supabase.from('empresas').update(req.body).eq('id', req.params.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
@@ -326,7 +324,6 @@ app.get('/api/dashboard', auth, async (req, res) => {
     }).length,
   };
 
-  // Comisiones por comercial
   const { data: usuarios } = await supabase.from('usuarios')
     .select('id, nombre').eq('empresa_id', req.empresa.id).eq('activo', true);
 
@@ -339,7 +336,7 @@ app.get('/api/dashboard', auth, async (req, res) => {
   res.json({ stats, comisiones });
 });
 
-// ── Servir el frontend ─────────────────────────────────────────────
+// ── Frontend ───────────────────────────────────────────────────────
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
