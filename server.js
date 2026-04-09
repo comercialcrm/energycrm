@@ -269,7 +269,8 @@ app.post('/api/admin/empresas', auth, soloSuperAdmin, async (req, res) => {
   const { nombre, email, telefono, admin_nombre, admin_email, admin_password, plan, dias_trial } = req.body;
 
   const trial_fin = new Date();
-  trial_fin.setDate(trial_fin.getDate() + (dias_trial || 30));
+  if ((plan || 'trial') === 'anual') trial_fin.setFullYear(trial_fin.getFullYear() + 1);
+  else trial_fin.setDate(trial_fin.getDate() + (dias_trial || 30));
 
   const { data: empresa, error: e1 } = await supabase.from('empresas').insert({
     nombre, email, telefono, plan: plan || 'trial', trial_fin
