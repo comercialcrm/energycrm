@@ -329,6 +329,12 @@ select.filter-sel:focus{border-color:var(--am);}
         <select class="filter-sel admin-only" id="f-comercial" onchange="filtrar()" style="display:none">
           <option value="">👤 Todos los comerciales</option>
         </select>
+        <button class="btn btn-secondary" onclick="exportarExcel()">📥 Exportar Excel</button>
+        <button class="btn btn-secondary" onclick="descargarPlantilla()">📋 Plantilla</button>
+        <label class="btn btn-secondary" style="cursor:pointer">
+          📤 Importar Excel
+          <input type="file" id="import-input" accept=".xlsx,.csv" style="display:none" onchange="importarExcel(this)">
+        </label>
         <button class="btn btn-primary" onclick="abrirModalCliente()">+ Nuevo Cliente</button>
       </div>
       <div class="table-wrap">
