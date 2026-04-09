@@ -595,16 +595,12 @@ select.filter-sel:focus{border-color:var(--am);}
       <div class="form-row full" style="margin-bottom:16px">
         <div class="field"><label>Nombre completo *</label><input type="text" id="com-nombre"></div>
       </div>
-      <div class="form-row full" style="margin-bottom:16px">
-        <div class="field"><label>Email *</label><input type="email" id="com-email"></div>
-      </div>
-      <div class="form-row full" style="margin-bottom:16px">
+      <div class="form-row full" style="margin-bottom:0">
         <div class="field"><label>Teléfono</label><input type="tel" id="com-tel"></div>
       </div>
-      <div class="form-row full" style="margin-bottom:0">
-        <div class="field"><label>Contraseña</label><input type="password" id="com-pass" placeholder="Mínimo 6 caracteres"></div>
-      </div>
       <input type="hidden" id="com-id">
+      <input type="hidden" id="com-email">
+      <input type="hidden" id="com-pass">
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="cerrarModal('modal-comercial')">Cancelar</button>
@@ -1377,15 +1373,12 @@ function editarComercial(id) {
 
 async function guardarComercial() {
   const id = document.getElementById('com-id').value;
-  const body = {
-    nombre: document.getElementById('com-nombre').value.trim(),
-    email: document.getElementById('com-email').value.trim(),
-    password: document.getElementById('com-pass').value,
-    rol: 'comercial',
-  };
-  if (!body.nombre || !body.email) { toast('Nombre y email son obligatorios', 'error'); return; }
-  if (!id && !body.password) { toast('La contraseña es obligatoria', 'error'); return; }
-  if (!body.password) delete body.password;
+  const nombre = document.getElementById('com-nombre').value.trim();
+  if (!nombre) { toast('El nombre es obligatorio', 'error'); return; }
+  const emailAuto = 'comercial.' + nombre.toLowerCase().replace(/\s+/g,'.').replace(/[^a-z0-9.]/g,'') + '.' + Date.now() + '@sin-acceso.local';
+  const passAuto = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  const body = { nombre, rol: 'comercial' };
+  if (!id) { body.email = emailAuto; body.password = passAuto; }
   try {
     if (id) await api('PUT', '/api/usuarios/' + id, body);
     else await api('POST', '/api/usuarios', body);
