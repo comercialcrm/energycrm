@@ -1540,7 +1540,10 @@ async function toggleEmpresa(id, activa) {
   try {
     await api('PUT', '/api/admin/empresas/'+id, { activa });
     cargarEmpresas();
-    toast(activa ? '✅ Emp
+    toast(activa ? '✅ Empresa activada' : '🚫 Empresa desactivada');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
 // ── EXPORTAR CSV ─────────────────────────────────────────────────
 function exportarCSV() {
   if (!CLIENTES.length) { toast('No hay clientes para exportar', 'error'); return; }
@@ -1578,9 +1581,7 @@ function exportarCSV() {
   URL.revokeObjectURL(url);
   toast('CSV exportado (' + list.length + ' clientes)');
 }
-resa activada' : '🚫 Empresa desactivada');
-  } catch(e) { toast(e.message, 'error'); }
-}
+
 
 
 // ── Init ───────────────────────────────────────────────────────────
