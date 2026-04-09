@@ -339,11 +339,12 @@ select.filter-sel:focus{border-color:var(--am);}
               <th>Tarifa</th>
               <th>Vencimiento</th>
               <th>Comercial</th>
+              <th>Comisión</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody id="tabla-clientes">
-            <tr><td colspan="8"><div class="loading"><div class="spinner"></div><div>Cargando...</div></div></td></tr>
+            <tr><td colspan="9"><div class="loading"><div class="spinner"></div><div>Cargando...</div></div></td></tr>
           </tbody>
         </table>
       </div>
@@ -595,11 +596,15 @@ select.filter-sel:focus{border-color:var(--am);}
         <div class="field"><label>Nombre completo *</label><input type="text" id="com-nombre"></div>
       </div>
       <div class="form-row full" style="margin-bottom:16px">
+        <div class="field"><label>Email *</label><input type="email" id="com-email"></div>
+      </div>
+      <div class="form-row full" style="margin-bottom:16px">
         <div class="field"><label>Teléfono</label><input type="tel" id="com-tel"></div>
       </div>
+      <div class="form-row full" style="margin-bottom:0">
+        <div class="field"><label>Contraseña</label><input type="password" id="com-pass" placeholder="Mínimo 6 caracteres"></div>
+      </div>
       <input type="hidden" id="com-id">
-      <input type="hidden" id="com-email" value="">
-      <input type="hidden" id="com-pass" value="">
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="cerrarModal('modal-comercial')">Cancelar</button>
@@ -833,7 +838,7 @@ function renderClientes() {
 
   const tbody = document.getElementById('tabla-clientes');
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="empty-icon">👥</div><div class="empty-text">No hay clientes</div></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty"><div class="empty-icon">👥</div><div class="empty-text">No hay clientes</div></div></td></tr>';
     return;
   }
 
@@ -843,7 +848,8 @@ function renderClientes() {
     const dias = vd ? Math.ceil((vd-hoy)/(1000*60*60*24)) : null;
     const vcls = !vd ? 'venc-none' : dias<=30 ? 'venc-urgente' : dias<=90 ? 'venc-alerta' : 'venc-ok';
     const vtxt = !vd ? '—' : `${fmt(v)} <small>(${dias}d)</small>`;
-    const com = c.usuarios ? c.usuarios.nombre : '—';
+    const com = c.usuarios ? c.usuarios.nombre : (c.comercial_nombre || '—');
+      const comImp = c.comision_importe ? c.comision_importe.toFixed(0)+'€ <small style="color:#94a3b8">'+(c.comision_tipo||'')+'</small>' : '—';
     return `<tr>
       <td><strong>${c.nombre}</strong><br><small style="color:#94a3b8">${c.nif||''}</small></td>
       <td><span class="badge badge-${c.tipo}">${c.tipo==='luz'?'⚡ Luz':c.tipo==='gas'?'🔥 Gas':'⚡🔥'}</span></td>
@@ -852,6 +858,7 @@ function renderClientes() {
       <td>${c.tarifa_luz||c.tarifa_gas||'—'}</td>
       <td class="${vcls}">${vtxt}</td>
       <td>${com}</td>
+      <td>${comImp}</td>
       <td>
         <button class="btn btn-secondary btn-sm" onclick="editarCliente('${c.id}')">✏️</button>
         <button class="btn btn-danger btn-sm" onclick="eliminarCliente('${c.id}')">🗑️</button>
@@ -1351,7 +1358,9 @@ function abrirModalComercial() {
   document.getElementById('modal-comercial-title').textContent = 'Nuevo Comercial';
   document.getElementById('com-id').value = '';
   document.getElementById('com-nombre').value = '';
+  document.getElementById('com-email').value = '';
   document.getElementById('com-tel').value = '';
+  document.getElementById('com-pass').value = '';
   document.getElementById('modal-comercial').classList.add('open');
 }
 
@@ -1368,18 +1377,15 @@ function editarComercial(id) {
 
 async function guardarComercial() {
   const id = document.getElementById('com-id').value;
-  const nombre = document.getElementById('com-nombre').value.trim();
-  if (!nombre) { toast('El nombre es obligatorio', 'error'); return; }
-  // Generar email y contraseña automáticos si no tiene acceso
-  const emailAuto = 'comercial.' + nombre.toLowerCase().replace(/\s+/g,'.').replace(/[^a-z0-9.]/g,'') + '.' + Date.now() + '@sin-acceso.local';
-  const passAuto = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
   const body = {
-    nombre,
-    email: id ? undefined : emailAuto,
-    password: id ? undefined : passAuto,
+    nombre: document.getElementById('com-nombre').value.trim(),
+    email: document.getElementById('com-email').value.trim(),
+    password: document.getElementById('com-pass').value,
     rol: 'comercial',
   };
-  if (id) { delete body.email; delete body.password; }
+  if (!body.nombre || !body.email) { toast('Nombre y email son obligatorios', 'error'); return; }
+  if (!id && !body.password) { toast('La contraseña es obligatoria', 'error'); return; }
+  if (!body.password) delete body.password;
   try {
     if (id) await api('PUT', '/api/usuarios/' + id, body);
     else await api('POST', '/api/usuarios', body);
