@@ -383,10 +383,10 @@ select.filter-sel:focus{border-color:var(--am);}
       <div class="table-wrap">
         <table class="data-table">
           <thead>
-            <tr><th>Empresa</th><th>Email</th><th>Plan</th><th>Trial restante</th><th>Estado</th><th>Alta</th><th>Acciones</th></tr>
+            <tr><th>Empresa</th><th>Email</th><th>Plan</th><th>Trial restante</th><th>Clientes</th><th>Estado</th><th>Alta</th><th>Acciones</th></tr>
           </thead>
           <tbody id="tabla-empresas">
-            <tr><td colspan="7"><div class="loading"><div class="spinner"></div></div></td></tr>
+            <tr><td colspan="8"><div class="loading"><div class="spinner"></div></div></td></tr>
           </tbody>
         </table>
       </div>
@@ -1055,9 +1055,9 @@ async function cargarDocs(clienteId) {
   try {
     const docs = await api('GET', '/api/clientes/'+clienteId+'/documentos');
     list.innerHTML = docs.map(d => `
-      <div class="doc-item">
+      <div class="doc-item" onclick="${d.url ? `window.open('${d.url}','_blank')` : ''}">
         📄 ${d.nombre}
-        <span class="doc-del" onclick="eliminarDoc('${d.id}','${clienteId}')">✕</span>
+        <span class="doc-del" onclick="event.stopPropagation();eliminarDoc('${d.id}','${clienteId}')">✕</span>
       </div>`).join('');
   } catch(e) {}
 }
@@ -1435,7 +1435,7 @@ async function cargarEmpresas() {
 function renderEmpresas() {
   const tbody = document.getElementById('tabla-empresas');
   if (!EMPRESAS.length) {
-    tbody.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="empty-icon">🏢</div><div class="empty-text">No hay empresas</div></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="empty-icon">🏢</div><div class="empty-text">No hay empresas</div></div></td></tr>';
     return;
   }
   tbody.innerHTML = EMPRESAS.map(e => {
@@ -1457,6 +1457,7 @@ function renderEmpresas() {
       <td>${e.email}</td>
       <td>${planBadge}</td>
       <td>${trialOk ? dias + ' días' : '—'}</td>
+      <td><strong>${e.num_clientes || 0}</strong></td>
       <td>${estadoBadge}</td>
       <td>${alta}</td>
       <td>
