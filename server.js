@@ -161,22 +161,54 @@ app.delete('/api/clientes/:id', auth, soloAdmin, async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════
-// DOCUMENTOS
+// DOCUMENTOS (Supabase Storage)
 // ══════════════════════════════════════════════════════════════════
 
 app.get('/api/clientes/:id/documentos', auth, async (req, res) => {
   const { data, error } = await supabase
     .from('documentos')
-    .select('id, nombre, tipo, created_at')
+    .select('id, nombre, tipo, storage_path, created_at')
     .eq('cliente_id', req.params.id)
     .eq('empresa_id', req.empresa.id);
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+
+  // Generar URLs firmadas para cada documento
+  const docs = await Promise.all((data || []).map(async doc => {
+    if (doc.storage_path) {
+      const { data: urlData } = await supabase.storage
+        .from('documentos')
+        .createSignedUrl(doc.storage_path, 3600); // 1 hora
+      return { ...doc, url: urlData?.signedUrl || null };
+    }
+    return doc;
+  }));
+  res.json(docs);
 });
 
 app.post('/api/clientes/:id/documentos', auth, async (req, res) => {
-  const doc = { ...req.body, cliente_id: req.params.id, empresa_id: req.empresa.id };
-  const { data, error } = await supabase.from('documentos').insert(doc).select('id, nombre, tipo, created_at').single();
+  const { nombre, tipo, datos } = req.body;
+  
+  // Subir archivo a Storage
+  const base64 = datos.split(',')[1] || datos;
+  const buffer = Buffer.from(base64, 'base64');
+  const ext = nombre.split('.').pop() || 'pdf';
+  const storagePath = `${req.empresa.id}/${req.params.id}/${Date.now()}_${nombre}`;
+  
+  const { error: uploadError } = await supabase.storage
+    .from('documentos')
+    .upload(storagePath, buffer, { contentType: tipo, upsert: false });
+  
+  if (uploadError) return res.status(500).json({ error: uploadError.message });
+
+  // Guardar referencia en BD
+  const { data, error } = await supabase.from('documentos').insert({
+    cliente_id: req.params.id,
+    empresa_id: req.empresa.id,
+    nombre,
+    tipo,
+    storage_path: storagePath
+  }).select('id, nombre, tipo, storage_path, created_at').single();
+  
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
@@ -184,10 +216,24 @@ app.post('/api/clientes/:id/documentos', auth, async (req, res) => {
 app.get('/api/documentos/:id', auth, async (req, res) => {
   const { data, error } = await supabase.from('documentos').select('*').eq('id', req.params.id).eq('empresa_id', req.empresa.id).single();
   if (error || !data) return res.status(404).json({ error: 'No encontrado' });
+  
+  if (data.storage_path) {
+    const { data: urlData } = await supabase.storage
+      .from('documentos')
+      .createSignedUrl(data.storage_path, 3600);
+    return res.json({ ...data, url: urlData?.signedUrl || null });
+  }
   res.json(data);
 });
 
 app.delete('/api/documentos/:id', auth, async (req, res) => {
+  const { data } = await supabase.from('documentos').select('storage_path').eq('id', req.params.id).eq('empresa_id', req.empresa.id).single();
+  
+  // Eliminar del Storage
+  if (data?.storage_path) {
+    await supabase.storage.from('documentos').remove([data.storage_path]);
+  }
+  
   await supabase.from('documentos').delete().eq('id', req.params.id).eq('empresa_id', req.empresa.id);
   res.json({ ok: true });
 });
@@ -262,7 +308,14 @@ function soloSuperAdmin(req, res, next) {
 app.get('/api/admin/empresas', auth, soloSuperAdmin, async (req, res) => {
   const { data, error } = await supabase.from('empresas').select('*').order('created_at', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+
+  // Añadir conteo de clientes por empresa
+  const empresasConClientes = await Promise.all((data || []).map(async emp => {
+    const { count } = await supabase.from('clientes').select('*', { count: 'exact', head: true }).eq('empresa_id', emp.id);
+    return { ...emp, num_clientes: count || 0 };
+  }));
+
+  res.json(empresasConClientes);
 });
 
 app.post('/api/admin/empresas', auth, soloSuperAdmin, async (req, res) => {
