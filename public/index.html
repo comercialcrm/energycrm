@@ -1,446 +1,1665 @@
-const express = require('express');
-const cors = require('cors');
-const bcrypt = require('bcryptjs');
-const { v4: uuidv4 } = require('uuid');
-const { createClient } = require('@supabase/supabase-js');
-const path = require('path');
-
-const app = express();
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
-
-// ── Supabase ───────────────────────────────────────────────────────
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
-
-// ── Middleware auth ────────────────────────────────────────────────
-async function auth(req, res, next) {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'No autorizado' });
-
-  const { data: sesion } = await supabase
-    .from('sesiones')
-    .select('*, usuarios(*)')
-    .eq('token', token)
-    .gt('expires_at', new Date().toISOString())
-    .single();
-
-  if (!sesion) return res.status(401).json({ error: 'Sesión expirada' });
-
-  const { data: empresa } = await supabase
-    .from('empresas')
-    .select('*')
-    .eq('id', sesion.usuarios.empresa_id)
-    .single();
-
-  if (!empresa?.activa && sesion.usuarios.rol !== 'superadmin') return res.status(403).json({ error: 'Empresa desactivada' });
-  if (new Date(empresa.trial_fin) < new Date() && empresa.plan === 'trial' && sesion.usuarios.rol !== 'superadmin') {
-    return res.status(403).json({ error: 'Trial expirado', trial_expirado: true });
-  }
-
-  req.usuario = sesion.usuarios;
-  req.empresa = empresa;
-  next();
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnergyCRM</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --az:#1A2B4A; --az2:#2C4A7C; --am:#F5C518; --am2:#d4a900;
+  --tq:#00BCD4; --bg:#F0F4F8; --white:#fff;
+  --red:#ef4444; --green:#22c55e; --orange:#f59e0b;
+  --shadow:0 4px 24px rgba(26,43,74,.12);
+  --shadow-lg:0 8px 40px rgba(26,43,74,.18);
+  --r:14px;
 }
 
-function soloAdmin(req, res, next) {
-  if (!['admin', 'superadmin'].includes(req.usuario.rol)) {
-    return res.status(403).json({ error: 'Solo administradores' });
-  }
-  next();
+body{font-family:'Barlow',sans-serif;background:var(--bg);color:#1e293b;min-height:100vh;}
+
+/* ── LOGIN ─────────────────────────────────────────── */
+#login-screen{
+  display:flex;align-items:center;justify-content:center;
+  min-height:100vh;
+  background:linear-gradient(135deg,#0f1f3d 0%,#1A2B4A 50%,#1a3a5c 100%);
+  position:relative;overflow:hidden;
+}
+#login-screen::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at 20% 50%,rgba(245,197,24,.08) 0%,transparent 60%),
+             radial-gradient(ellipse at 80% 20%,rgba(0,188,212,.08) 0%,transparent 50%);
+}
+.login-card{
+  background:rgba(255,255,255,.97);border-radius:20px;
+  padding:48px 40px;width:100%;max-width:420px;
+  box-shadow:0 24px 80px rgba(0,0,0,.4);
+  position:relative;z-index:1;
+  animation:slideUp .4s ease;
+}
+@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.login-logo{text-align:center;margin-bottom:32px;}
+.login-logo-img{width:72px;height:72px;border-radius:16px;margin-bottom:12px;}
+.login-brand{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:800;color:var(--az);}
+.login-brand span{color:var(--am);}
+.login-sub{font-size:13px;color:#64748b;margin-top:4px;}
+.login-title{font-size:18px;font-weight:600;color:var(--az);margin-bottom:24px;}
+.form-group{margin-bottom:16px;}
+.form-group label{display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;}
+.form-group input{
+  width:100%;padding:12px 16px;border:2px solid #e2e8f0;border-radius:10px;
+  font-size:15px;font-family:'Barlow',sans-serif;
+  transition:border-color .2s;outline:none;background:#f8fafc;
+}
+.form-group input:focus{border-color:var(--am);background:white;}
+.btn-login{
+  width:100%;padding:14px;background:var(--az);color:white;
+  border:none;border-radius:10px;font-size:16px;font-weight:700;
+  font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;
+  cursor:pointer;transition:all .2s;margin-top:8px;
+}
+.btn-login:hover{background:var(--az2);transform:translateY(-1px);}
+.btn-login:active{transform:translateY(0);}
+.login-error{
+  background:#fef2f2;border:1px solid #fecaca;color:var(--red);
+  padding:10px 14px;border-radius:8px;font-size:13px;margin-top:12px;display:none;
+}
+.trial-badge{
+  background:linear-gradient(135deg,var(--am),var(--am2));
+  color:var(--az);padding:8px 16px;border-radius:8px;
+  font-size:13px;font-weight:600;text-align:center;margin-bottom:20px;display:none;
 }
 
-// ══════════════════════════════════════════════════════════════════
-// AUTH
-// ══════════════════════════════════════════════════════════════════
+/* ── TOP BAR ────────────────────────────────────────── */
+#app{display:none;flex-direction:column;min-height:100vh;}
+.topbar{
+  background:linear-gradient(135deg,#1A2B4A,#2C4A7C 60%,#00BCD4);
+  padding:0 24px;height:60px;display:flex;align-items:center;
+  justify-content:space-between;box-shadow:var(--shadow-lg);position:sticky;top:0;z-index:100;
+}
+.topbar-left{display:flex;align-items:center;gap:14px;}
+.topbar-logo-img{height:40px;width:40px;border-radius:8px;background:white;padding:2px;object-fit:contain;}
+.topbar-brand{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;color:white;}
+.topbar-brand span{color:var(--am);}
+.topbar-tagline{font-size:11px;color:rgba(255,255,255,.6);margin-top:1px;}
+.topbar-right{display:flex;align-items:center;gap:16px;}
+.trial-info{background:rgba(245,197,24,.15);border:1px solid rgba(245,197,24,.3);
+  color:var(--am);padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;}
+.user-info{color:rgba(255,255,255,.8);font-size:13px;}
+.btn-logout{background:rgba(255,255,255,.1);color:white;border:1px solid rgba(255,255,255,.2);
+  padding:6px 14px;border-radius:8px;font-size:12px;cursor:pointer;transition:all .2s;}
+.btn-logout:hover{background:rgba(255,255,255,.2);}
 
-app.post('/api/login', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Email y contraseña requeridos' });
+/* ── TABS ────────────────────────────────────────────── */
+.tabs{background:white;border-bottom:2px solid #e2e8f0;padding:0 24px;display:flex;gap:0;}
+.tab{padding:14px 20px;font-size:13px;font-weight:600;color:#64748b;cursor:pointer;
+  border-bottom:3px solid transparent;margin-bottom:-2px;transition:all .2s;white-space:nowrap;}
+.tab:hover{color:var(--az);}
+.tab.active{color:var(--az);border-bottom-color:var(--am);}
+.tab-icon{margin-right:6px;}
 
-  const { data: usuario } = await supabase
-    .from('usuarios')
-    .select('*')
-    .eq('email', email.toLowerCase())
-    .eq('activo', true)
-    .single();
+/* ── MAIN ────────────────────────────────────────────── */
+.main{flex:1;padding:24px;max-width:1400px;margin:0 auto;width:100%;}
+.section{display:none;}
+.section.active{display:block;}
 
-  if (!usuario) return res.status(401).json({ error: 'Email o contraseña incorrectos' });
+/* ── DASHBOARD ───────────────────────────────────────── */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;margin-bottom:24px;}
+.kpi{background:white;border-radius:var(--r);padding:18px 14px;text-align:center;
+  box-shadow:var(--shadow);border-top:4px solid var(--am);transition:transform .2s;}
+.kpi:hover{transform:translateY(-2px);}
+.kpi-num{font-family:'Barlow Condensed',sans-serif;font-size:42px;font-weight:800;color:var(--az);line-height:1;}
+.kpi-label{font-size:11px;color:#64748b;margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;}
+.kpi.urgente .kpi-num{color:var(--red);}
+.kpi.alerta .kpi-num{color:var(--orange);}
+.kpi.ok .kpi-num{color:var(--green);}
 
-  const ok = await bcrypt.compare(password, usuario.password_hash);
-  if (!ok) return res.status(401).json({ error: 'Email o contraseña incorrectos' });
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+@media(max-width:768px){.dash-grid{grid-template-columns:1fr;}}
+.card{background:white;border-radius:var(--r);padding:20px;box-shadow:var(--shadow);}
+.card-title{font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:700;
+  color:var(--az);margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+.dash-table{width:100%;border-collapse:collapse;font-size:13px;}
+.dash-table th{text-align:left;padding:8px 10px;color:#64748b;font-weight:600;
+  font-size:11px;text-transform:uppercase;border-bottom:2px solid #f1f5f9;}
+.dash-table td{padding:10px;border-bottom:1px solid #f8fafc;vertical-align:middle;}
+.dash-table tr:last-child td{border-bottom:none;}
+.com-bar-wrap{background:#f1f5f9;border-radius:4px;height:6px;margin-top:4px;}
+.com-bar{background:linear-gradient(90deg,var(--am),var(--tq));height:6px;border-radius:4px;transition:width .5s;}
 
-  const { data: empresa } = await supabase
-    .from('empresas')
-    .select('*')
-    .eq('id', usuario.empresa_id)
-    .single();
+/* ── CLIENTES ────────────────────────────────────────── */
+.toolbar{display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap;}
+.search-box{flex:1;min-width:200px;padding:10px 16px;border:2px solid #e2e8f0;border-radius:10px;
+  font-size:14px;font-family:'Barlow',sans-serif;outline:none;transition:border-color .2s;}
+.search-box:focus{border-color:var(--am);}
+.btn{padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;
+  border:none;transition:all .2s;font-family:'Barlow',sans-serif;display:inline-flex;align-items:center;gap:6px;}
+.btn-primary{background:var(--am);color:var(--az);}
+.btn-primary:hover{background:var(--am2);}
+.btn-secondary{background:#f1f5f9;color:#475569;}
+.btn-secondary:hover{background:#e2e8f0;}
+.btn-danger{background:#fef2f2;color:var(--red);}
+.btn-danger:hover{background:#fee2e2;}
+.btn-sm{padding:6px 12px;font-size:12px;}
 
-  if (!empresa?.activa) return res.status(403).json({ error: 'Cuenta desactivada. Contacta con soporte.' });
+select.filter-sel{padding:10px 14px;border:2px solid #e2e8f0;border-radius:10px;
+  font-size:13px;font-family:'Barlow',sans-serif;outline:none;background:white;cursor:pointer;}
+select.filter-sel:focus{border-color:var(--am);}
 
-  const diasRestantes = Math.ceil((new Date(empresa.trial_fin) - new Date()) / (1000 * 60 * 60 * 24));
-  if (diasRestantes <= 0 && empresa.plan === 'trial') {
-    return res.status(403).json({ error: 'Tu período de prueba ha finalizado. Contacta con soporte para continuar.', trial_expirado: true });
-  }
+.table-wrap{background:white;border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;}
+.data-table{width:100%;border-collapse:collapse;font-size:13px;}
+.data-table thead tr{background:linear-gradient(135deg,var(--az),var(--az2));color:white;}
+.data-table th{padding:12px 14px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.3px;}
+.data-table td{padding:11px 14px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}
+.data-table tbody tr:hover{background:#f8fafc;}
+.data-table tbody tr:last-child td{border-bottom:none;}
 
-  const token = uuidv4() + uuidv4();
-  await supabase.from('sesiones').insert({ usuario_id: usuario.id, token });
-  await supabase.from('usuarios').update({ ultimo_acceso: new Date() }).eq('id', usuario.id);
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;}
+.badge-activo{background:#dcfce7;color:#166534;}
+.badge-incidencia{background:#fff7ed;color:#9a3412;}
+.badge-baja{background:#fef2f2;color:#991b1b;}
+.badge-luz{background:#fef9c3;color:#713f12;}
+.badge-gas{background:#eff6ff;color:#1e40af;}
+.badge-ambos{background:#f3e8ff;color:#6b21a8;}
 
-  res.json({
-    token,
-    usuario: { id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol },
-    empresa: { id: empresa.id, nombre: empresa.nombre, plan: empresa.plan, dias_trial: diasRestantes > 0 ? diasRestantes : 0 }
-  });
-});
+.venc-urgente{color:var(--red);font-weight:700;}
+.venc-alerta{color:var(--orange);font-weight:600;}
+.venc-ok{color:var(--green);}
+.venc-none{color:#94a3b8;}
 
-app.post('/api/logout', auth, async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  await supabase.from('sesiones').delete().eq('token', token);
-  res.json({ ok: true });
-});
+/* ── MODAL ───────────────────────────────────────────── */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.5);
+  display:none;align-items:center;justify-content:center;z-index:1000;padding:20px;
+}
+.modal-overlay.open{display:flex;}
+.modal{background:white;border-radius:20px;width:100%;max-width:700px;
+  max-height:90vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.3);
+  animation:slideUp .3s ease;}
+.modal-header{padding:24px 28px 0;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:white;z-index:1;border-bottom:1px solid #f1f5f9;padding-bottom:16px;}
+.modal-title{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;color:var(--az);}
+.modal-close{width:32px;height:32px;border-radius:50%;background:#f1f5f9;border:none;
+  font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#64748b;}
+.modal-close:hover{background:#e2e8f0;}
+.modal-body{padding:24px 28px;}
+.modal-footer{padding:0 28px 24px;display:flex;gap:10px;justify-content:flex-end;}
 
-app.get('/api/me', auth, (req, res) => {
-  const dias = Math.ceil((new Date(req.empresa.trial_fin) - new Date()) / (1000 * 60 * 60 * 24));
-  res.json({
-    usuario: { id: req.usuario.id, nombre: req.usuario.nombre, email: req.usuario.email, rol: req.usuario.rol },
-    empresa: { id: req.empresa.id, nombre: req.empresa.nombre, plan: req.empresa.plan, dias_trial: dias > 0 ? dias : 0 }
-  });
-});
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+.form-row.full{grid-template-columns:1fr;}
+.form-row.triple{grid-template-columns:1fr 1fr 1fr;}
+.field label{display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px;}
+.field input,.field select,.field textarea{
+  width:100%;padding:10px 14px;border:2px solid #e2e8f0;border-radius:9px;
+  font-size:14px;font-family:'Barlow',sans-serif;outline:none;transition:border-color .2s;
+}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--am);}
+.field textarea{resize:vertical;min-height:70px;}
+.section-divider{font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;
+  color:var(--az);margin:20px 0 14px;padding-bottom:6px;border-bottom:2px solid var(--am);
+  text-transform:uppercase;letter-spacing:.5px;}
 
-// ══════════════════════════════════════════════════════════════════
-// CLIENTES
-// ══════════════════════════════════════════════════════════════════
+/* ── USUARIOS ────────────────────────────────────────── */
+.user-card{background:white;border-radius:12px;padding:18px;box-shadow:var(--shadow);
+  display:flex;align-items:center;gap:16px;margin-bottom:12px;}
+.user-avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--az),var(--az2));
+  display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:18px;flex-shrink:0;}
+.user-info-block{flex:1;}
+.user-name{font-weight:700;font-size:15px;color:var(--az);}
+.user-email{font-size:12px;color:#64748b;}
+.user-meta{font-size:11px;color:#94a3b8;margin-top:2px;}
 
-app.get('/api/clientes', auth, async (req, res) => {
-  let query = supabase
-    .from('clientes')
-    .select('*, usuarios(nombre)')
-    .eq('empresa_id', req.empresa.id)
-    .order('nombre');
+/* ── TOAST ───────────────────────────────────────────── */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--az);color:white;
+  padding:12px 20px;border-radius:10px;font-size:14px;font-weight:500;
+  box-shadow:var(--shadow-lg);z-index:9999;display:none;animation:slideUp .3s ease;}
+.toast.success{background:#166534;}
+.toast.error{background:#991b1b;}
 
-  if (req.usuario.rol === 'comercial') {
-    query = query.eq('comercial_id', req.usuario.id);
-  }
+/* ── LOADING ─────────────────────────────────────────── */
+.loading{text-align:center;padding:40px;color:#94a3b8;font-size:14px;}
+.spinner{display:inline-block;width:24px;height:24px;border:3px solid #e2e8f0;
+  border-top-color:var(--am);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:8px;}
+@keyframes spin{to{transform:rotate(360deg)}}
 
-  const { data, error } = await query;
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
+.empty{text-align:center;padding:48px;color:#94a3b8;}
+.empty-icon{font-size:48px;margin-bottom:12px;}
+.empty-text{font-size:15px;font-weight:500;}
 
-app.post('/api/clientes', auth, async (req, res) => {
-  const cliente = {
-    ...req.body,
-    empresa_id: req.empresa.id,
-    comercial_id: req.body.comercial_id || req.usuario.id
+/* ── DOCS ────────────────────────────────────────────── */
+.doc-list{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+.doc-item{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;
+  padding:8px 14px;display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;}
+.doc-item:hover{background:#f1f5f9;}
+.doc-del{color:var(--red);cursor:pointer;font-size:16px;margin-left:4px;}
+
+/* ── RESPONSIVE ──────────────────────────────────────── */
+@media(max-width:600px){
+  .form-row,.form-row.triple{grid-template-columns:1fr;}
+  .topbar{padding:0 14px;}
+  .main{padding:14px;}
+  .kpi-grid{grid-template-columns:repeat(3,1fr);}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-brand">ENERGY<span>CRM</span></div>
+      <div class="login-sub">Gestión Energética Profesional</div>
+    </div>
+    <div id="trial-badge" class="trial-badge"></div>
+    <div class="login-title">Accede a tu cuenta</div>
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" id="login-email" placeholder="tu@email.com" autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label>Contraseña</label>
+      <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn-login" onclick="doLogin()">Entrar →</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <img src="data:image/png;base64,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" alt="EnergyCRM" style="height:42px;width:auto;object-fit:contain;">
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div id="trial-info" class="trial-info" style="display:none"></div>
+      <div class="user-info" id="topbar-user"></div>
+      <button class="btn-logout" onclick="doLogout()">Salir</button>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs" id="tabs">
+    <div class="tab active" onclick="showTab('dashboard')" data-tab="dashboard"><span class="tab-icon">📊</span>Dashboard</div>
+    <div class="tab" onclick="showTab('clientes')" data-tab="clientes"><span class="tab-icon">👥</span>Clientes</div>
+    <div class="tab admin-only" onclick="showTab('comerciales')" data-tab="comerciales"><span class="tab-icon">👤</span>Comerciales</div>
+    <div class="tab admin-only" onclick="showTab('usuarios')" data-tab="usuarios"><span class="tab-icon">⚙️</span>Admin</div>
+    <div class="tab superadmin-only" onclick="showTab('superadmin')" data-tab="superadmin"><span class="tab-icon">👑</span>Super Admin</div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+
+    <!-- DASHBOARD -->
+    <div class="section active" id="sec-dashboard">
+      <div class="kpi-grid" id="kpi-grid">
+        <div class="loading"><div class="spinner"></div></div>
+      </div>
+      <div class="dash-grid">
+        <div class="card">
+          <div class="card-title">⚠️ Vencimientos próximos</div>
+          <div id="dash-urgentes"><div class="loading"><div class="spinner"></div></div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">💰 Comisiones por comercial</div>
+          <div id="dash-comisiones"><div class="loading"><div class="spinner"></div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CLIENTES -->
+    <div class="section" id="sec-clientes">
+      <div class="toolbar">
+        <input class="search-box" type="text" id="search" placeholder="🔍 Buscar cliente, NIF, CUPs..." oninput="filtrar()">
+        <select class="filter-sel" id="f-estado" onchange="filtrar()">
+          <option value="">Todos los estados</option>
+          <option value="activo">✅ Activos</option>
+          <option value="incidencia">⚠️ Incidencias</option>
+          <option value="baja">❌ Bajas</option>
+        </select>
+        <select class="filter-sel" id="f-tipo" onchange="filtrar()">
+          <option value="">Luz y Gas</option>
+          <option value="luz">⚡ Luz</option>
+          <option value="gas">🔥 Gas</option>
+        </select>
+        <select class="filter-sel admin-only" id="f-comercial" onchange="filtrar()" style="display:none">
+          <option value="">👤 Todos los comerciales</option>
+        </select>
+        <button class="btn btn-secondary" onclick="exportarCSV()">📥 Exportar CSV</button>
+        <button class="btn btn-secondary" onclick="descargarPlantilla()">📋 Plantilla</button>
+        <label class="btn btn-secondary" style="cursor:pointer">📤 Importar
+          <input type="file" id="import-input" accept=".xlsx,.csv" style="display:none" onchange="importarExcel(this)">
+        </label>
+        <button class="btn btn-primary" onclick="abrirModalCliente()">+ Nuevo Cliente</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Tipo</th>
+              <th>Estado</th>
+              <th>Comercializadora</th>
+              <th>Tarifa</th>
+              <th>Vencimiento</th>
+              <th>Comercial</th>
+              <th>Comisión</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tabla-clientes">
+            <tr><td colspan="9"><div class="loading"><div class="spinner"></div><div>Cargando...</div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- COMERCIALES -->
+    <div class="section" id="sec-comerciales">
+      <div class="toolbar">
+        <button class="btn btn-primary" onclick="abrirModalComercial()">+ Nuevo Comercial</button>
+      </div>
+      <div id="lista-comerciales"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+
+    <!-- USUARIOS -->
+    <div class="section" id="sec-usuarios">
+      <div class="toolbar">
+        <button class="btn btn-primary" onclick="abrirModalUsuario()">+ Nuevo Usuario</button>
+      </div>
+      <div id="lista-usuarios"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+
+    <!-- SUPERADMIN -->
+    <div class="section" id="sec-superadmin">
+      <div class="toolbar" style="justify-content:space-between;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;color:var(--az);">👑 Panel Global</div>
+        <button class="btn btn-primary" style="cursor:pointer;z-index:10;position:relative;" onclick="abrirModalEmpresa(); return false;">+ Nueva Empresa</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr><th>Empresa</th><th>Email</th><th>Plan</th><th>Trial restante</th><th>Clientes</th><th>Estado</th><th>Alta</th><th>Acciones</th></tr>
+          </thead>
+          <tbody id="tabla-empresas">
+            <tr><td colspan="8"><div class="loading"><div class="spinner"></div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- MODAL CLIENTE -->
+<div class="modal-overlay" id="modal-cliente">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-cliente-title">Nuevo Cliente</div>
+      <button class="modal-close" onclick="cerrarModal('modal-cliente')">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- LECTOR PDF -->
+      <div style="background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border:2px dashed #00BCD4;border-radius:12px;padding:16px;margin-bottom:20px;text-align:center;">
+        <div style="font-size:13px;color:#1A2B4A;font-weight:600;margin-bottom:10px;">📄 ¿Tienes la factura en PDF? Cárgala y rellenamos los datos automáticamente</div>
+        <input type="file" id="pdf-factura-input" accept=".pdf" style="display:none" onchange="leerFacturaPDF()">
+        <button class="btn btn-secondary" onclick="document.getElementById('pdf-factura-input').click()">📎 Cargar factura PDF</button>
+        <div id="pdf-status" style="margin-top:8px;font-size:12px;color:#64748b;display:none"></div>
+      </div>
+      <div class="section-divider">📋 Datos generales</div>
+      <div class="form-row">
+        <div class="field"><label>Nombre / Razón social *</label><input type="text" id="c-nombre"></div>
+        <div class="field"><label>NIF / CIF</label><input type="text" id="c-nif"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Teléfono</label><input type="tel" id="c-tel"></div>
+        <div class="field"><label>Email</label><input type="email" id="c-email"></div>
+      </div>
+      <div class="form-row full">
+        <div class="field"><label>Dirección</label><input type="text" id="c-dir"></div>
+      </div>
+      <div class="form-row full" id="bloque-comercial-asignado" style="display:none">
+        <div class="field"><label>👤 Comercial / Administrador asignado</label>
+          <select id="c-comercial-asignado"><option value="">Sin asignar</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Tipo de suministro</label>
+          <select id="c-tipo" onchange="toggleTipo()">
+            <option value="luz">⚡ Electricidad</option>
+            <option value="gas">🔥 Gas</option>
+            <option value="ambos">⚡🔥 Ambos</option>
+          </select>
+        </div>
+        <div class="field"><label>Estado</label>
+          <select id="c-estado">
+            <option value="activo">✅ Activo</option>
+            <option value="incidencia">⚠️ Incidencia</option>
+            <option value="baja">❌ Baja</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- LUZ -->
+      <div id="bloque-luz">
+        <div class="section-divider">⚡ Electricidad</div>
+        <div class="form-row">
+          <div class="field"><label>CUPs Luz</label><input type="text" id="c-cups-luz" placeholder="ES00315..."></div>
+          <div class="field"><label>Comercializadora</label>
+            <select id="c-com-luz" onchange="toggleComLuz()">
+              <option value="">Seleccionar...</option>
+              <option>Iberdrola</option><option>Endesa</option><option>Naturgy</option>
+              <option>EDP</option><option>Repsol Luz</option><option>Holaluz</option>
+              <option>Visalia</option>
+              <option>Gasiluz</option><option>Gana Energia</option>
+              <option>Plenitude</option><option>Lucera</option><option value="otra">Otra (escribir)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row" id="bloque-com-luz-manual" style="display:none">
+          <div class="field" style="grid-column:1/-1"><label>Nombre comercializadora</label><input type="text" id="c-com-luz-manual" placeholder="Escribe el nombre..."></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>Tarifa</label>
+            <select id="c-tarifa-luz">
+              <option value="">Seleccionar...</option>
+              <option>2.0TD</option><option>3.0TD</option>
+              <option>6.1TD</option><option>6.2TD</option><option>6.3TD</option><option>6.4TD</option>
+            </select>
+          </div>
+          <div class="field"><label>Vencimiento contrato</label><input type="date" id="c-venc-luz"></div>
+        </div>
+        <div class="form-row full">
+          <div class="field"><label>Potencias kW (P1;P2;P3;P4;P5;P6)</label>
+            <input type="text" id="c-potencias" placeholder="ej: 5.5;5.5 o 10;10;10;10;10;10">
+          </div>
+        </div>
+      </div>
+
+      <!-- GAS -->
+      <div id="bloque-gas" style="display:none">
+        <div class="section-divider">🔥 Gas</div>
+        <div class="form-row">
+          <div class="field"><label>CUPs Gas</label><input type="text" id="c-cups-gas" placeholder="ES00045..."></div>
+          <div class="field"><label>Comercializadora Gas</label>
+            <select id="c-com-gas">
+              <option value="">Seleccionar...</option>
+              <option>Naturgy</option><option>Endesa Gas</option><option>Iberdrola Gas</option>
+              <option>Repsol Gas</option><option>EDP Gas</option><option>Holaluz Gas</option><option>Otra</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>Tarifa Gas</label>
+            <select id="c-tarifa-gas">
+              <option value="">Seleccionar...</option>
+              <option>RL1</option><option>RL2</option><option>RL3</option><option>RL4</option>
+            </select>
+          </div>
+          <div class="field"><label>Vencimiento Gas</label><input type="date" id="c-venc-gas"></div>
+        </div>
+      </div>
+
+      <!-- COMISIÓN -->
+      <div class="section-divider">💰 Comisión</div>
+      <div class="form-row triple">
+        <div class="field"><label>Importe (€)</label><input type="number" id="c-com-imp" placeholder="0.00"></div>
+        <div class="field"><label>Tipo</label>
+          <select id="c-com-tipo">
+            <option value="unico">Único</option>
+            <option value="mensual">Mensual</option>
+            <option value="anual">Anual</option>
+          </select>
+        </div>
+        <div class="field"><label>Fecha comisión</label><input type="date" id="c-com-fecha"></div>
+      </div>
+
+      <!-- NOTAS -->
+      <div class="section-divider">📝 Notas</div>
+      <div class="form-row full">
+        <div class="field"><textarea id="c-notas" placeholder="Observaciones..."></textarea></div>
+      </div>
+
+      <!-- DOCUMENTOS -->
+      <div id="bloque-docs" style="display:none">
+        <div class="section-divider">📎 Documentos</div>
+        <input type="file" id="doc-input" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="subirDoc()">
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('doc-input').click()">📎 Adjuntar documento</button>
+        <div class="doc-list" id="doc-list"></div>
+      </div>
+
+      <input type="hidden" id="c-id">
+      <input type="hidden" id="c-comercial-id">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModal('modal-cliente')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarCliente()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EMPRESA -->
+<div class="modal-overlay" id="modal-empresa">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-empresa-title">Nueva Empresa Cliente</div>
+      <button class="modal-close" onclick="cerrarModal('modal-empresa')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="section-divider">🏢 Datos de la empresa</div>
+      <div class="form-row">
+        <div class="field"><label>Nombre empresa *</label><input type="text" id="e-nombre" placeholder="Asesoría Energética SL"></div>
+        <div class="field"><label>Email empresa *</label><input type="email" id="e-email" placeholder="info@empresa.com"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Teléfono</label><input type="tel" id="e-tel" placeholder="600 000 000"></div>
+        <div class="field"><label>Plan</label>
+          <select id="e-plan">
+            <option value="trial">🎁 Trial</option>
+            <option value="anual">⭐ Anual (49€/año)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Días de trial (solo si plan Trial)</label><input type="number" id="e-dias" value="30" min="1" max="3650"></div>
+        <div class="field"><label>Estado</label>
+          <select id="e-activa">
+            <option value="true">✅ Activa</option>
+            <option value="false">❌ Inactiva</option>
+          </select>
+        </div>
+      </div>
+      <div class="section-divider">👤 Usuario administrador</div>
+      <div class="form-row">
+        <div class="field"><label>Nombre admin *</label><input type="text" id="e-admin-nombre" placeholder="Nombre Apellido"></div>
+        <div class="field"><label>Email admin *</label><input type="email" id="e-admin-email" placeholder="admin@empresa.com"></div>
+      </div>
+      <div class="form-row full">
+        <div class="field"><label>Contraseña inicial *</label><input type="text" id="e-admin-pass" placeholder="Escribe una contraseña..." autocomplete="off"></div>
+      </div>
+      <input type="hidden" id="e-id">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModal('modal-empresa')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarEmpresa()">💾 Crear Empresa</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL COMERCIAL -->
+<div class="modal-overlay" id="modal-comercial">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-comercial-title">Nuevo Comercial</div>
+      <button class="modal-close" onclick="cerrarModal('modal-comercial')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row full" style="margin-bottom:16px">
+        <div class="field"><label>Nombre completo *</label><input type="text" id="com-nombre"></div>
+      </div>
+      <div class="form-row full" style="margin-bottom:0">
+        <div class="field"><label>Teléfono</label><input type="tel" id="com-tel"></div>
+      </div>
+      <input type="hidden" id="com-id">
+      <input type="hidden" id="com-email">
+      <input type="hidden" id="com-pass">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModal('modal-comercial')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarComercial()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL USUARIO -->
+<div class="modal-overlay" id="modal-usuario">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-usuario-title">Nuevo Usuario</div>
+      <button class="modal-close" onclick="cerrarModal('modal-usuario')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row full" style="margin-bottom:16px">
+        <div class="field"><label>Nombre completo</label><input type="text" id="u-nombre"></div>
+      </div>
+      <div class="form-row full" style="margin-bottom:16px">
+        <div class="field"><label>Email</label><input type="email" id="u-email"></div>
+      </div>
+      <div class="form-row full" style="margin-bottom:16px">
+        <div class="field"><label>Contraseña</label><input type="password" id="u-pass" placeholder="Mínimo 6 caracteres"></div>
+      </div>
+      <div class="form-row full" style="margin-bottom:0">
+        <div class="field"><label>Rol</label>
+          <select id="u-rol">
+            <option value="comercial">Comercial</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </div>
+      </div>
+      <input type="hidden" id="u-id">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModal('modal-usuario')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarUsuario()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Config ─────────────────────────────────────────────────────────
+const API = '';  // same origin
+let TOKEN = localStorage.getItem('ecrm_token');
+let ME = null;
+let CLIENTES = [];
+let USUARIOS = [];
+
+// ── API helper ─────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const opts = {
+    method, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }
   };
-  const { data, error } = await supabase.from('clientes').insert(cliente).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
-
-app.put('/api/clientes/:id', auth, async (req, res) => {
-  const { id } = req.params;
-  const { data: existing } = await supabase.from('clientes').select('*').eq('id', id).eq('empresa_id', req.empresa.id).single();
-  if (!existing) return res.status(404).json({ error: 'Cliente no encontrado' });
-  if (req.usuario.rol === 'comercial' && existing.comercial_id !== req.usuario.id) {
-    return res.status(403).json({ error: 'No tienes permiso para editar este cliente' });
-  }
-  const { data, error } = await supabase.from('clientes').update({ ...req.body, updated_at: new Date() }).eq('id', id).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
-
-app.delete('/api/clientes/:id', auth, soloAdmin, async (req, res) => {
-  const { id } = req.params;
-  await supabase.from('clientes').delete().eq('id', id).eq('empresa_id', req.empresa.id);
-  res.json({ ok: true });
-});
-
-// ══════════════════════════════════════════════════════════════════
-// DOCUMENTOS (Supabase Storage)
-// ══════════════════════════════════════════════════════════════════
-
-app.get('/api/clientes/:id/documentos', auth, async (req, res) => {
-  const { data, error } = await supabase
-    .from('documentos')
-    .select('id, nombre, tipo, storage_path, created_at')
-    .eq('cliente_id', req.params.id)
-    .eq('empresa_id', req.empresa.id);
-  if (error) return res.status(500).json({ error: error.message });
-
-  // Generar URLs firmadas para cada documento
-  const docs = await Promise.all((data || []).map(async doc => {
-    if (doc.storage_path) {
-      const { data: urlData } = await supabase.storage
-        .from('documentos')
-        .createSignedUrl(doc.storage_path, 3600); // 1 hora
-      return { ...doc, url: urlData?.signedUrl || null };
-    }
-    return doc;
-  }));
-  res.json(docs);
-});
-
-app.post('/api/clientes/:id/documentos', auth, async (req, res) => {
-  const { nombre, tipo, datos } = req.body;
-  
-  // Subir archivo a Storage
-  const base64 = datos.split(',')[1] || datos;
-  const buffer = Buffer.from(base64, 'base64');
-  const ext = nombre.split('.').pop() || 'pdf';
-  const storagePath = `${req.empresa.id}/${req.params.id}/${Date.now()}_${nombre}`;
-  
-  const { error: uploadError } = await supabase.storage
-    .from('documentos')
-    .upload(storagePath, buffer, { contentType: tipo, upsert: false });
-  
-  if (uploadError) return res.status(500).json({ error: uploadError.message });
-
-  // Guardar referencia en BD
-  const { data, error } = await supabase.from('documentos').insert({
-    cliente_id: req.params.id,
-    empresa_id: req.empresa.id,
-    nombre,
-    tipo,
-    storage_path: storagePath
-  }).select('id, nombre, tipo, storage_path, created_at').single();
-  
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
-
-app.get('/api/documentos/:id', auth, async (req, res) => {
-  const { data, error } = await supabase.from('documentos').select('*').eq('id', req.params.id).eq('empresa_id', req.empresa.id).single();
-  if (error || !data) return res.status(404).json({ error: 'No encontrado' });
-  
-  if (data.storage_path) {
-    const { data: urlData } = await supabase.storage
-      .from('documentos')
-      .createSignedUrl(data.storage_path, 3600);
-    return res.json({ ...data, url: urlData?.signedUrl || null });
-  }
-  res.json(data);
-});
-
-app.delete('/api/documentos/:id', auth, async (req, res) => {
-  const { data } = await supabase.from('documentos').select('storage_path').eq('id', req.params.id).eq('empresa_id', req.empresa.id).single();
-  
-  // Eliminar del Storage
-  if (data?.storage_path) {
-    await supabase.storage.from('documentos').remove([data.storage_path]);
-  }
-  
-  await supabase.from('documentos').delete().eq('id', req.params.id).eq('empresa_id', req.empresa.id);
-  res.json({ ok: true });
-});
-
-// ══════════════════════════════════════════════════════════════════
-// USUARIOS (solo admin)
-// ══════════════════════════════════════════════════════════════════
-
-app.get('/api/usuarios', auth, soloAdmin, async (req, res) => {
-  const { data, error } = await supabase
-    .from('usuarios')
-    .select('id, nombre, email, rol, activo, ultimo_acceso, created_at')
-    .eq('empresa_id', req.empresa.id)
-    .order('nombre');
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
-
-app.post('/api/usuarios', auth, soloAdmin, async (req, res) => {
-  const { nombre, email, password, rol } = req.body;
-  if (!nombre || !email || !password) return res.status(400).json({ error: 'Faltan campos' });
-
-  // ── LÍMITE: solo 1 admin por empresa ──────────────────────────
-  if (rol === 'admin') {
-    const { data: adminsExistentes } = await supabase
-      .from('usuarios')
-      .select('id')
-      .eq('empresa_id', req.empresa.id)
-      .eq('rol', 'admin')
-      .eq('activo', true);
-    if (adminsExistentes && adminsExistentes.length >= 1) {
-      return res.status(400).json({ error: 'Solo se permite 1 administrador por empresa. Contacta con soporte para ampliar.' });
-    }
-  }
-
-  const password_hash = await bcrypt.hash(password, 10);
-  const { data, error } = await supabase.from('usuarios').insert({
-    nombre, email: email.toLowerCase(), password_hash,
-    rol: rol || 'comercial', empresa_id: req.empresa.id
-  }).select('id, nombre, email, rol, activo').single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
-
-app.put('/api/usuarios/:id', auth, soloAdmin, async (req, res) => {
-  const updates = { ...req.body };
-  if (updates.password) {
-    updates.password_hash = await bcrypt.hash(updates.password, 10);
-    delete updates.password;
-  }
-  delete updates.empresa_id;
-  const { data, error } = await supabase.from('usuarios').update(updates).eq('id', req.params.id).eq('empresa_id', req.empresa.id).select('id, nombre, email, rol, activo').single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
-
-app.delete('/api/usuarios/:id', auth, soloAdmin, async (req, res) => {
-  if (req.params.id === req.usuario.id) return res.status(400).json({ error: 'No puedes eliminarte a ti mismo' });
-  await supabase.from('usuarios').update({ activo: false }).eq('id', req.params.id).eq('empresa_id', req.empresa.id);
-  res.json({ ok: true });
-});
-
-// ══════════════════════════════════════════════════════════════════
-// SUPERADMIN
-// ══════════════════════════════════════════════════════════════════
-
-function soloSuperAdmin(req, res, next) {
-  if (req.usuario.rol !== 'superadmin') return res.status(403).json({ error: 'Acceso denegado' });
-  next();
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Error');
+  return data;
 }
 
-app.get('/api/admin/empresas', auth, soloSuperAdmin, async (req, res) => {
-  const { data, error } = await supabase.from('empresas').select('*').order('created_at', { ascending: false });
-  if (error) return res.status(500).json({ error: error.message });
+// ── Toast ──────────────────────────────────────────────────────────
+function toast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + type;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3000);
+}
 
-  // Añadir conteo de clientes por empresa
-  const empresasConClientes = await Promise.all((data || []).map(async emp => {
-    const { count } = await supabase.from('clientes').select('*', { count: 'exact', head: true }).eq('empresa_id', emp.id);
-    return { ...emp, num_clientes: count || 0 };
-  }));
+// ── Login ──────────────────────────────────────────────────────────
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pass  = document.getElementById('login-pass').value;
+  const err   = document.getElementById('login-error');
+  err.style.display = 'none';
+  if (!email || !pass) { err.textContent = 'Introduce email y contraseña'; err.style.display = 'block'; return; }
+  try {
+    const data = await api('POST', '/api/login', { email, password: pass });
+    TOKEN = data.token;
+    ME = data;
+    localStorage.setItem('ecrm_token', TOKEN);
+    arrancarApp(data);
+  } catch(e) {
+    err.textContent = e.message;
+    err.style.display = 'block';
+  }
+}
 
-  res.json(empresasConClientes);
-});
+document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 
-app.post('/api/admin/empresas', auth, soloSuperAdmin, async (req, res) => {
-  const { nombre, email, telefono, admin_nombre, admin_email, admin_password, plan, dias_trial } = req.body;
+async function doLogout() {
+  try { await api('POST', '/api/logout'); } catch(e) {}
+  localStorage.removeItem('ecrm_token');
+  location.reload();
+}
 
-  const trial_fin = new Date();
-  if ((plan || 'trial') === 'anual') trial_fin.setFullYear(trial_fin.getFullYear() + 1);
-  else trial_fin.setDate(trial_fin.getDate() + (dias_trial || 30));
+// ── Init ───────────────────────────────────────────────────────────
+async function init() {
+  if (!TOKEN) return;
+  try {
+    const data = await api('GET', '/api/me');
+    ME = data;
+    arrancarApp(data);
+  } catch(e) {
+    localStorage.removeItem('ecrm_token');
+  }
+}
 
-  const { data: empresa, error: e1 } = await supabase.from('empresas').insert({
-    nombre, email, telefono, plan: plan || 'trial', trial_fin
-  }).select().single();
-  if (e1) return res.status(500).json({ error: e1.message });
+function arrancarApp(data) {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
 
-  const password_hash = await bcrypt.hash(admin_password, 10);
-  const { data: usuario, error: e2 } = await supabase.from('usuarios').insert({
-    empresa_id: empresa.id, nombre: admin_nombre,
-    email: admin_email.toLowerCase(), password_hash, rol: 'admin'
-  }).select('id, nombre, email, rol').single();
-  if (e2) return res.status(500).json({ error: e2.message });
+  // User info
+  document.getElementById('topbar-user').textContent = data.usuario.nombre + ' (' + data.usuario.rol + ')';
 
-  res.json({ empresa, usuario });
-});
+  // Trial info
+  if (data.empresa.plan === 'trial' && data.empresa.dias_trial > 0) {
+    const ti = document.getElementById('trial-info');
+    ti.textContent = '⏳ ' + data.empresa.dias_trial + ' días de prueba';
+    ti.style.display = 'block';
+  }
 
-app.put('/api/admin/empresas/:id', auth, soloSuperAdmin, async (req, res) => {
-  const { data, error } = await supabase.from('empresas').update(req.body).eq('id', req.params.id).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
+  // Admin tabs
+  if (['admin','superadmin'].includes(data.usuario.rol)) {
+    document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'flex');
+  }
+  // Superadmin tab
+  if (data.usuario.rol === 'superadmin') {
+    document.querySelectorAll('.superadmin-only').forEach(el => el.style.display = 'flex');
+  }
 
-// ══════════════════════════════════════════════════════════════════
-// LOGO EMPRESA
-// ══════════════════════════════════════════════════════════════════
+  cargarDashboard();
+  cargarClientes();
+}
 
-app.post('/api/empresa/logo', auth, soloAdmin, async (req, res) => {
-  const { nombre, tipo, datos } = req.body;
-  const base64 = datos.split(',')[1] || datos;
-  const buffer = Buffer.from(base64, 'base64');
-  const ext = nombre.split('.').pop() || 'png';
-  const storagePath = `logos/${req.empresa.id}/logo.${ext}`;
+// ── Tabs ───────────────────────────────────────────────────────────
+function showTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelector('[data-tab="'+tab+'"]').classList.add('active');
+  document.getElementById('sec-'+tab).classList.add('active');
+  if (tab === 'comerciales') cargarComerciales2();
+  if (tab === 'usuarios') cargarUsuarios();
+  if (tab === 'superadmin') cargarEmpresas();
+}
 
-  // Subir a Storage
-  const { error: uploadError } = await supabase.storage
-    .from('documentos')
-    .upload(storagePath, buffer, { contentType: tipo, upsert: true });
+// ── DASHBOARD ──────────────────────────────────────────────────────
+async function cargarDashboard() {
+  try {
+    const d = await api('GET', '/api/dashboard');
+    const s = d.stats || {};
 
-  if (uploadError) return res.status(500).json({ error: uploadError.message });
+    document.getElementById('kpi-grid').innerHTML = `
+      <div class="kpi"><div class="kpi-num">${s.total||0}</div><div class="kpi-label">Total Clientes</div></div>
+      <div class="kpi ok"><div class="kpi-num">${s.activos||0}</div><div class="kpi-label">Activos</div></div>
+      <div class="kpi alerta"><div class="kpi-num">${s.incidencias||0}</div><div class="kpi-label">Incidencias</div></div>
+      <div class="kpi"><div class="kpi-num">${s.bajas||0}</div><div class="kpi-label">Bajas</div></div>
+      <div class="kpi"><div class="kpi-num">${s.luz||0}</div><div class="kpi-label">⚡ Luz</div></div>
+      <div class="kpi"><div class="kpi-num">${s.gas||0}</div><div class="kpi-label">🔥 Gas</div></div>
+      <div class="kpi urgente"><div class="kpi-num">${s.urgentes||0}</div><div class="kpi-label">⚠️ Urgentes</div></div>
+      <div class="kpi alerta"><div class="kpi-num">${s.alertas||0}</div><div class="kpi-label">🔔 Alertas</div></div>
+    `;
 
-  // Generar URL firmada larga (1 año)
-  const { data: urlData } = await supabase.storage
-    .from('documentos')
-    .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
-
-  const url = urlData?.signedUrl || null;
-
-  // Guardar URL en empresa
-  await supabase.from('empresas').update({ logo_url: storagePath }).eq('id', req.empresa.id);
-
-  res.json({ url });
-});
-
-app.get('/api/empresa/logo', auth, async (req, res) => {
-  const { data: empresa } = await supabase
-    .from('empresas')
-    .select('logo_url')
-    .eq('id', req.empresa.id)
-    .single();
-
-  if (!empresa?.logo_url) return res.json({ url: null });
-
-  const { data: urlData } = await supabase.storage
-    .from('documentos')
-    .createSignedUrl(empresa.logo_url, 60 * 60 * 24 * 365);
-
-  res.json({ url: urlData?.signedUrl || null });
-});
-
-// ══════════════════════════════════════════════════════════════════
-// DASHBOARD
-// ══════════════════════════════════════════════════════════════════
-
-app.get('/api/dashboard', auth, async (req, res) => {
-  let query = supabase.from('clientes').select('*').eq('empresa_id', req.empresa.id);
-  if (req.usuario.rol === 'comercial') query = query.eq('comercial_id', req.usuario.id);
-
-  const { data: clientes } = await query;
-  if (!clientes) return res.json({});
-
-  const hoy = new Date();
-  const en30 = new Date(hoy); en30.setDate(hoy.getDate() + 30);
-  const en90 = new Date(hoy); en90.setDate(hoy.getDate() + 90);
-
-  const stats = {
-    total: clientes.length,
-    activos: clientes.filter(c => c.estado === 'activo').length,
-    incidencias: clientes.filter(c => c.estado === 'incidencia').length,
-    bajas: clientes.filter(c => c.estado === 'baja').length,
-    luz: clientes.filter(c => c.tipo === 'luz' || c.tipo === 'ambos').length,
-    gas: clientes.filter(c => c.tipo === 'gas' || c.tipo === 'ambos').length,
-    urgentes: clientes.filter(c => {
+    // Urgentes
+    const cl = await api('GET', '/api/clientes');
+    const hoy = new Date(); const en30 = new Date(); en30.setDate(hoy.getDate()+30);
+    const urgentes = cl.filter(c => {
       const v = c.vencimiento_luz || c.vencimiento_gas;
       return v && new Date(v) <= en30 && new Date(v) >= hoy;
-    }).length,
-    alertas: clientes.filter(c => {
-      const v = c.vencimiento_luz || c.vencimiento_gas;
-      return v && new Date(v) > en30 && new Date(v) <= en90;
-    }).length,
+    }).slice(0,10);
+
+    document.getElementById('dash-urgentes').innerHTML = urgentes.length ? `
+      <table class="dash-table">
+        <thead><tr><th>Cliente</th><th>Vencimiento</th><th>Días</th></tr></thead>
+        <tbody>${urgentes.map(c => {
+          const v = c.vencimiento_luz || c.vencimiento_gas;
+          const dias = Math.ceil((new Date(v)-hoy)/(1000*60*60*24));
+          return `<tr><td>${c.nombre}</td><td>${fmt(v)}</td><td class="venc-urgente">${dias}d</td></tr>`;
+        }).join('')}</tbody>
+      </table>` : '<div class="empty"><div class="empty-icon">✅</div><div class="empty-text">Sin vencimientos urgentes</div></div>';
+
+    // Comisiones
+    const maxCom = Math.max(...(d.comisiones||[]).map(c=>c.total), 1);
+    document.getElementById('dash-comisiones').innerHTML = (d.comisiones||[]).length ? `
+      <table class="dash-table">
+        <thead><tr><th>Comercial</th><th>Clientes</th><th>Total</th></tr></thead>
+        <tbody>${(d.comisiones||[]).map(c => `
+          <tr>
+            <td>${c.nombre}</td>
+            <td>${c.clientes}</td>
+            <td>
+              <strong>${c.total.toFixed(0)}€</strong>
+              <div class="com-bar-wrap"><div class="com-bar" style="width:${(c.total/maxCom*100).toFixed(0)}%"></div></div>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>` : '<div class="empty"><div class="empty-icon">💰</div><div class="empty-text">Sin comisiones registradas</div></div>';
+
+  } catch(e) { console.error(e); }
+}
+
+// ── CLIENTES ───────────────────────────────────────────────────────
+async function cargarClientes() {
+  try {
+    CLIENTES = await api('GET', '/api/clientes');
+    renderClientes();
+    // Poblar filtro de comerciales (solo admin)
+    if (ME && ['admin','superadmin'].includes(ME.usuario.rol)) {
+      const sel = document.getElementById('f-comercial');
+      sel.style.display = 'block';
+      const usuarios = await api('GET', '/api/usuarios');
+      const comerciales = (usuarios||[]);
+      sel.innerHTML = '<option value="">👤 Todos los comerciales</option>' +
+        comerciales.map(u => `<option value="${u.id}">${u.nombre}</option>`).join('');
+    }
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function renderClientes() {
+  const q = (document.getElementById('search').value||'').toLowerCase();
+  const fe = document.getElementById('f-estado').value;
+  const ft = document.getElementById('f-tipo').value;
+  const fc = document.getElementById('f-comercial').value;
+  const hoy = new Date(); const en30 = new Date(); en30.setDate(hoy.getDate()+30); const en90 = new Date(); en90.setDate(hoy.getDate()+90);
+
+  let list = CLIENTES.filter(c => {
+    const txt = (c.nombre+c.nif+c.cups_luz+c.cups_gas+c.comercializadora_luz+c.comercializadora_gas).toLowerCase();
+    return (!q || txt.includes(q)) && (!fe || c.estado===fe) && (!ft || c.tipo===ft || c.tipo==='ambos') && (!fc || c.comercial_id===fc);
+  });
+
+  // Sort: bajas last, urgentes first
+  list.sort((a,b) => {
+    const ord = {baja:2,incidencia:1,activo:0};
+    return (ord[a.estado]||0)-(ord[b.estado]||0);
+  });
+
+  const tbody = document.getElementById('tabla-clientes');
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty"><div class="empty-icon">👥</div><div class="empty-text">No hay clientes</div></div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = list.map(c => {
+    const v = c.vencimiento_luz || c.vencimiento_gas;
+    const vd = v ? new Date(v) : null;
+    const dias = vd ? Math.ceil((vd-hoy)/(1000*60*60*24)) : null;
+    const vcls = !vd ? 'venc-none' : dias<=30 ? 'venc-urgente' : dias<=90 ? 'venc-alerta' : 'venc-ok';
+    const vtxt = !vd ? '—' : `${fmt(v)} <small>(${dias}d)</small>`;
+    const com = c.usuarios ? c.usuarios.nombre : (c.comercial_nombre || '—');
+      const comImp = c.comision_importe ? c.comision_importe.toFixed(0)+'€ <small style="color:#94a3b8">'+(c.comision_tipo||'')+'</small>' : '—';
+    return `<tr>
+      <td><strong>${c.nombre}</strong><br><small style="color:#94a3b8">${c.nif||''}</small></td>
+      <td><span class="badge badge-${c.tipo}">${c.tipo==='luz'?'⚡ Luz':c.tipo==='gas'?'🔥 Gas':'⚡🔥'}</span></td>
+      <td><span class="badge badge-${c.estado}">${c.estado==='activo'?'✅ Activo':c.estado==='incidencia'?'⚠️ Incidencia':'❌ Baja'}</span></td>
+      <td>${c.comercializadora_luz||c.comercializadora_gas||'—'}</td>
+      <td>${c.tarifa_luz||c.tarifa_gas||'—'}</td>
+      <td class="${vcls}">${vtxt}</td>
+      <td>${com}</td>
+      <td>${comImp}</td>
+      <td>
+        <button class="btn btn-secondary btn-sm" onclick="editarCliente('${c.id}')">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="eliminarCliente('${c.id}')">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function filtrar() { renderClientes(); }
+
+function fmt(d) {
+  if (!d) return '';
+  const dd = new Date(d);
+  return dd.toLocaleDateString('es-ES');
+}
+
+// ── MODAL CLIENTE ──────────────────────────────────────────────────
+function abrirModalCliente(id) {
+  document.getElementById('modal-cliente-title').textContent = id ? 'Editar Cliente' : 'Nuevo Cliente';
+  document.getElementById('c-id').value = '';
+  ['nombre','nif','tel','email','dir','cups-luz','cups-gas','potencias','notas'].forEach(f => {
+    const el = document.getElementById('c-'+f); if(el) el.value='';
+  });
+  ['c-tipo','c-estado','c-com-luz','c-tarifa-luz','c-com-gas','c-tarifa-gas','c-com-tipo'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.selectedIndex=0;
+  });
+  ['c-venc-luz','c-venc-gas','c-com-imp','c-com-fecha'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.value='';
+  });
+  document.getElementById('bloque-docs').style.display = 'none';
+  document.getElementById('doc-list').innerHTML = '';
+  // Limpiar lector PDF
+  document.getElementById('pdf-factura-input').value = '';
+  document.getElementById('pdf-status').style.display = 'none';
+  document.getElementById('pdf-status').textContent = '';
+  toggleTipo();
+  cargarComerciales();
+  document.getElementById('modal-cliente').classList.add('open');
+}
+
+function cerrarModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function toggleComLuz() {
+  const sel = document.getElementById('c-com-luz').value;
+  document.getElementById('bloque-com-luz-manual').style.display = sel === 'otra' ? 'block' : 'none';
+}
+
+async function cargarComerciales() {
+  const bloque = document.getElementById('bloque-comercial-asignado');
+  const sel = document.getElementById('c-comercial-asignado');
+  try {
+    const usuarios = await api('GET', '/api/usuarios');
+    sel.innerHTML = '<option value="">Sin asignar</option>' + 
+      (usuarios||[]).map(u => `<option value="${u.id}">${u.nombre} (${u.rol})</option>`).join('');
+    bloque.style.display = 'block';
+  } catch(e) {
+    bloque.style.display = 'block';
+  }
+}
+
+function toggleTipo() {
+  const t = document.getElementById('c-tipo').value;
+  document.getElementById('bloque-luz').style.display = t==='gas' ? 'none' : 'block';
+  document.getElementById('bloque-gas').style.display = t==='luz' ? 'none' : 'block';
+}
+
+async function editarCliente(id) {
+  const c = CLIENTES.find(x => x.id===id);
+  if (!c) return;
+  abrirModalCliente(id);
+  document.getElementById('c-id').value = c.id;
+  document.getElementById('c-nombre').value = c.nombre||'';
+  document.getElementById('c-nif').value = c.nif||'';
+  document.getElementById('c-tel').value = c.telefono||'';
+  document.getElementById('c-email').value = c.email||'';
+  document.getElementById('c-dir').value = c.direccion||'';
+  document.getElementById('c-tipo').value = c.tipo||'luz';
+  document.getElementById('c-estado').value = c.estado||'activo';
+  document.getElementById('c-cups-luz').value = c.cups_luz||'';
+  const comLuzVal = c.comercializadora_luz||'';
+  const comLuzOpts = Array.from(document.getElementById('c-com-luz').options).map(o => o.value);
+  if (comLuzVal && !comLuzOpts.includes(comLuzVal)) {
+    document.getElementById('c-com-luz').value = 'otra';
+    document.getElementById('c-com-luz-manual').value = comLuzVal;
+    document.getElementById('bloque-com-luz-manual').style.display = 'block';
+  } else {
+    document.getElementById('c-com-luz').value = comLuzVal;
+    document.getElementById('bloque-com-luz-manual').style.display = 'none';
+  }
+  document.getElementById('c-tarifa-luz').value = c.tarifa_luz||'';
+  document.getElementById('c-venc-luz').value = c.vencimiento_luz||'';
+  document.getElementById('c-cups-gas').value = c.cups_gas||'';
+  document.getElementById('c-com-gas').value = c.comercializadora_gas||'';
+  document.getElementById('c-tarifa-gas').value = c.tarifa_gas||'';
+  document.getElementById('c-venc-gas').value = c.vencimiento_gas||'';
+  document.getElementById('c-potencias').value = c.potencias ? c.potencias.join(';') : '';
+  document.getElementById('c-com-imp').value = c.comision_importe||'';
+  document.getElementById('c-com-tipo').value = c.comision_tipo||'unico';
+  document.getElementById('c-com-fecha').value = c.comision_fecha||'';
+  document.getElementById('c-notas').value = c.notas||'';
+  toggleTipo();
+
+  // Cargar comerciales y LUEGO asignar el valor correcto
+  const sel = document.getElementById('c-comercial-asignado');
+  try {
+    const usuarios = await api('GET', '/api/usuarios');
+    sel.innerHTML = '<option value="">Sin asignar</option>' +
+      (usuarios||[]).map(u => `<option value="${u.id}">${u.nombre} (${u.rol})</option>`).join('');
+    document.getElementById('bloque-comercial-asignado').style.display = 'block';
+  } catch(e) {}
+  if (c.comercial_id) sel.value = c.comercial_id;
+
+  // Cargar documentos
+  document.getElementById('bloque-docs').style.display = 'block';
+  cargarDocs(id);
+}
+
+async function guardarCliente() {
+  const id = document.getElementById('c-id').value;
+  const nombre = document.getElementById('c-nombre').value.trim();
+  if (!nombre) { toast('El nombre es obligatorio', 'error'); return; }
+
+  const potStr = document.getElementById('c-potencias').value;
+  const potencias = potStr ? potStr.split(';').map(p => parseFloat(p)).filter(p => !isNaN(p)) : null;
+
+  const body = {
+    nombre,
+    nif: document.getElementById('c-nif').value,
+    telefono: document.getElementById('c-tel').value,
+    email: document.getElementById('c-email').value,
+    direccion: document.getElementById('c-dir').value,
+    tipo: document.getElementById('c-tipo').value,
+    estado: document.getElementById('c-estado').value,
+    cups_luz: document.getElementById('c-cups-luz').value,
+    comercializadora_luz: document.getElementById('c-com-luz').value === 'otra' 
+      ? document.getElementById('c-com-luz-manual').value 
+      : document.getElementById('c-com-luz').value,
+    tarifa_luz: document.getElementById('c-tarifa-luz').value,
+    vencimiento_luz: document.getElementById('c-venc-luz').value || null,
+    cups_gas: document.getElementById('c-cups-gas').value,
+    comercializadora_gas: document.getElementById('c-com-gas').value,
+    tarifa_gas: document.getElementById('c-tarifa-gas').value,
+    vencimiento_gas: document.getElementById('c-venc-gas').value || null,
+    potencias,
+    comision_importe: parseFloat(document.getElementById('c-com-imp').value)||null,
+    comision_tipo: document.getElementById('c-com-tipo').value,
+    comision_fecha: document.getElementById('c-com-fecha').value || null,
+    notas: document.getElementById('c-notas').value,
+    comercial_id: document.getElementById('c-comercial-asignado').value || null,
   };
 
-  const { data: usuarios } = await supabase.from('usuarios')
-    .select('id, nombre').eq('empresa_id', req.empresa.id).eq('activo', true);
+  try {
+    if (id) {
+      const updated = await api('PUT', '/api/clientes/'+id, body);
+      const idx = CLIENTES.findIndex(c => c.id===id);
+      if (idx>=0) CLIENTES[idx] = {...CLIENTES[idx], ...updated};
+    } else {
+      const nuevo = await api('POST', '/api/clientes', body);
+      CLIENTES.unshift(nuevo);
+    }
+    renderClientes();
+    cerrarModal('modal-cliente');
+    cargarDashboard();
+    toast(id ? 'Cliente actualizado ✅' : 'Cliente creado ✅');
+  } catch(e) { toast(e.message, 'error'); }
+}
 
-  const comisiones = (usuarios || []).map(u => {
-    const mis = clientes.filter(c => c.comercial_id === u.id);
-    const total = mis.reduce((sum, c) => sum + (parseFloat(c.comision_importe) || 0), 0);
-    return { nombre: u.nombre, total, clientes: mis.length };
-  }).filter(u => u.clientes > 0).sort((a, b) => b.total - a.total);
+async function eliminarCliente(id) {
+  if (!confirm('¿Eliminar este cliente?')) return;
+  try {
+    await api('DELETE', '/api/clientes/'+id);
+    CLIENTES = CLIENTES.filter(c => c.id!==id);
+    renderClientes();
+    cargarDashboard();
+    toast('Cliente eliminado');
+  } catch(e) { toast(e.message, 'error'); }
+}
 
-  res.json({ stats, comisiones });
+// ── DOCUMENTOS ─────────────────────────────────────────────────────
+async function cargarDocs(clienteId) {
+  const list = document.getElementById('doc-list');
+  try {
+    const docs = await api('GET', '/api/clientes/'+clienteId+'/documentos');
+    list.innerHTML = docs.map(d => `
+      <div class="doc-item" onclick="${d.url ? `window.open('${d.url}','_blank')` : ''}">
+        📄 ${d.nombre}
+        <span class="doc-del" onclick="event.stopPropagation();eliminarDoc('${d.id}','${clienteId}')">✕</span>
+      </div>`).join('');
+  } catch(e) {}
+}
+
+async function subirDoc() {
+  const clienteId = document.getElementById('c-id').value;
+  if (!clienteId) { toast('Guarda el cliente primero', 'error'); return; }
+  const file = document.getElementById('doc-input').files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      await api('POST', '/api/clientes/'+clienteId+'/documentos', {
+        nombre: file.name, tipo: file.type, datos: e.target.result
+      });
+      cargarDocs(clienteId);
+      toast('Documento adjuntado ✅');
+    } catch(err) { toast(err.message, 'error'); }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function eliminarDoc(docId, clienteId) {
+  if (!confirm('¿Eliminar documento?')) return;
+  await api('DELETE', '/api/documentos/'+docId);
+  cargarDocs(clienteId);
+}
+
+// ── USUARIOS ───────────────────────────────────────────────────────
+async function cargarUsuarios() {
+  try {
+    USUARIOS = await api('GET', '/api/usuarios');
+    const lista = document.getElementById('lista-usuarios');
+    lista.innerHTML = USUARIOS.map(u => `
+      <div class="user-card">
+        <div class="user-avatar">${u.nombre.charAt(0).toUpperCase()}</div>
+        <div class="user-info-block">
+          <div class="user-name">${u.nombre}</div>
+          <div class="user-email">${u.email}</div>
+          <div class="user-meta">Rol: ${u.rol} · ${u.activo?'✅ Activo':'❌ Inactivo'} · Último acceso: ${u.ultimo_acceso?new Date(u.ultimo_acceso).toLocaleDateString('es-ES'):'Nunca'}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="editarUsuario('${u.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="desactivarUsuario('${u.id}')">🗑️</button>
+        </div>
+      </div>`).join('');
+  } catch(e) { toast(e.message,'error'); }
+}
+
+function abrirModalUsuario() {
+  document.getElementById('modal-usuario-title').textContent = 'Nuevo Usuario';
+  document.getElementById('u-id').value = '';
+  document.getElementById('u-nombre').value = '';
+  document.getElementById('u-email').value = '';
+  document.getElementById('u-pass').value = '';
+  document.getElementById('u-rol').selectedIndex = 0;
+  document.getElementById('modal-usuario').classList.add('open');
+}
+
+function editarUsuario(id) {
+  const u = USUARIOS.find(x => x.id===id);
+  if (!u) return;
+  document.getElementById('modal-usuario-title').textContent = 'Editar Usuario';
+  document.getElementById('u-id').value = u.id;
+  document.getElementById('u-nombre').value = u.nombre;
+  document.getElementById('u-email').value = u.email;
+  document.getElementById('u-pass').value = '';
+  document.getElementById('u-rol').value = u.rol;
+  document.getElementById('modal-usuario').classList.add('open');
+}
+
+async function guardarUsuario() {
+  const id = document.getElementById('u-id').value;
+  const body = {
+    nombre: document.getElementById('u-nombre').value.trim(),
+    email: document.getElementById('u-email').value.trim(),
+    password: document.getElementById('u-pass').value,
+    rol: document.getElementById('u-rol').value,
+  };
+  if (!body.nombre || !body.email) { toast('Nombre y email son obligatorios','error'); return; }
+  if (!id && !body.password) { toast('La contraseña es obligatoria','error'); return; }
+  if (!body.password) delete body.password;
+  try {
+    if (id) await api('PUT', '/api/usuarios/'+id, body);
+    else await api('POST', '/api/usuarios', body);
+    cerrarModal('modal-usuario');
+    cargarUsuarios();
+    toast(id ? 'Usuario actualizado ✅' : 'Usuario creado ✅');
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function desactivarUsuario(id) {
+  if (!confirm('¿Desactivar este usuario?')) return;
+  try {
+    await api('DELETE', '/api/usuarios/'+id);
+    cargarUsuarios();
+    toast('Usuario desactivado');
+  } catch(e) { toast(e.message,'error'); }
+}
+
+// ── Cerrar modal al clicar fuera ───────────────────────────────────
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.classList.remove('open'); });
 });
 
-// ── Frontend ───────────────────────────────────────────────────────
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+// ── LECTOR FACTURAS PDF ────────────────────────────────────────────
+async function leerFacturaPDF() {
+  const file = document.getElementById('pdf-factura-input').files[0];
+  if (!file) return;
+  const status = document.getElementById('pdf-status');
+  status.style.display = 'block';
+  status.textContent = '⏳ Leyendo factura...';
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`EnergyCRM server running on port ${PORT}`));
+  try {
+    // Load PDF.js
+    if (!window.pdfjsLib) {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    let texto = '';
+    for (let i = 1; i <= Math.min(pdf.numPages, 3); i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      texto += content.items.map(it => it.str).join(' ') + ' ';
+    }
+
+    const datos = extraerDatosFactura(texto);
+    aplicarDatosFactura(datos);
+
+    const encontrados = Object.keys(datos).length;
+    status.textContent = encontrados > 0
+      ? `✅ ${encontrados} campos detectados y rellenados automáticamente`
+      : '⚠️ No se pudieron extraer datos. Rellena manualmente.';
+    status.style.color = encontrados > 0 ? '#166534' : '#9a3412';
+
+  } catch(e) {
+    status.textContent = '❌ Error al leer el PDF. Rellena manualmente.';
+    status.style.color = '#991b1b';
+    console.error(e);
+  }
+}
+
+function aplicarDatosFactura(d) {
+  if (d.nombre)    document.getElementById('c-nombre').value = d.nombre;
+  if (d.nif)       document.getElementById('c-nif').value = d.nif;
+  if (d.dir)       document.getElementById('c-dir').value = d.dir;
+  if (d.cups)      document.getElementById('c-cups-luz').value = d.cups;
+  if (d.tarifa)    document.getElementById('c-tarifa-luz').value = d.tarifa;
+  if (d.comercial) document.getElementById('c-com-luz').value = d.comercial;
+  if (d.finContrato) {
+    // Convertir DD/MM/YYYY a YYYY-MM-DD
+    const parts = d.finContrato.split(/[\/\-]/);
+    if (parts.length === 3) {
+      const iso = parts[2].length === 4
+        ? `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`
+        : `20${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+      document.getElementById('c-venc-luz').value = iso;
+    }
+  }
+  if (d.potencias && d.potencias.length > 0) {
+    document.getElementById('c-potencias').value = d.potencias.join(';');
+  }
+  toggleTipo();
+}
+
+function extraerDatosFactura(texto) {
+  var t = texto.replace(/\s+/g, ' ');
+  var datos = {};
+
+  // Comercializadora
+  var comMap = [
+    { name:'Iberdrola',          keys:['IBERDROLA CLIENTES','Iberdrola Clientes','iberdrola'] },
+    { name:'Endesa',             keys:['Endesa Energ','endesa energia'] },
+    { name:'Naturgy',            keys:['Naturgy','naturgy','Gas Natural Fenosa'] },
+    { name:'EDP',                keys:['EDP Energ','edp energ'] },
+    { name:'Repsol Luz',         keys:['Repsol Comercializadora','Repsol Luz','Repsol Electric'] },
+    { name:'Holaluz',            keys:['Holaluz'] },
+    { name:'Plenitude',          keys:['Plenitude'] },
+    { name:'Lucera',             keys:['Lucera'] },
+    { name:'Viesgo',             keys:['Viesgo'] },
+    { name:'Electrica Baleares', keys:['Electrica Baleares','Eléctrica Baleares','electricabaleares'] },
+    { name:'Visalia',            keys:['VISALIA ENERGIA','Visalia Energ'] },
+    { name:'Gasiluz',            keys:['Gasiluz'] },
+    { name:'Energia Mallorquina',keys:['Energia Mallorquina','Energía Mallorquina','ELECTRICA SOLLERENSE','energiamallorquina'] },
+  ];
+  for (var ci=0;ci<comMap.length;ci++) {
+    for (var ki=0;ki<comMap[ci].keys.length;ki++) {
+      if (t.toLowerCase().indexOf(comMap[ci].keys[ki].toLowerCase())!==-1) {
+        datos.comercial=comMap[ci].name; break;
+      }
+    }
+    if (datos.comercial) break;
+  }
+
+  // CUPS
+  var cupsMatch = t.match(/ES\s*[0-9]{4}\s*[0-9A-Z]{4}\s*[0-9A-Z]{4}\s*[0-9A-Z]{4}\s*[A-Z0-9]{2,4}\s*[A-Z]?/i);
+  if (cupsMatch) datos.cups = cupsMatch[0].replace(/\s/g,'').toUpperCase();
+
+  // NIF/CIF/DNI
+  var nifExplicit =
+    t.match(/\bNIF titular del contrato[:\s]+([A-Z0-9]{8,9})\b/i) ||
+    t.match(/\bNIF[:\s]+([A-Z0-9]{8,9})\b/i) ||
+    t.match(/\bDNI[:\s]+([0-9]{8}[A-Z])\b/i) ||
+    t.match(/\bDNI\/CIF[:\s]+([A-Z0-9]{8,9})\b/i) ||
+    t.match(/\bNIF\/CIF\s*([A-Z]{0,2}[A-Z][0-9]{7,8}[A-Z0-9]?)\b/i);
+  if (nifExplicit) datos.nif = nifExplicit[1].toUpperCase();
+
+  // Nombre/Titular
+  var titularMatch =
+    t.match(/\bTitular\b\s+([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑA-Za-záéíóúñ\s]{5,60}?)(?:\s{2,}|Potencia|Direcci|NIF|DNI|Plan)/i) ||
+    t.match(/Titular del contrato[:\s]+([A-ZÁÉÍÓÚÑC][A-ZÁÉÍÓÚÑA-Za-záéíóúñ\/\s',.0-9-]{3,70}?)(?:\s{2,}|NIF|CIF|DNI|Empresa)/i) ||
+    t.match(/Nombre y Apellidos del titular\s+([A-ZÁÉÍÓÚÑ][A-Za-záéíóúñ\s]{5,60}?)(?:\s{2,}|DNI|NIF|Cuenta)/i) ||
+    t.match(/Esta es tu factura de luz,\s+([A-ZÁÉÍÓÚÑ][A-Za-záéíóúñ\s]{5,60}?)(?:\s{2,}|CUPS|Nº)/i) ||
+    t.match(/Titular[:\s]+([A-ZAÉÍÓÚÑC][A-Za-záéíóúñ\/\s,.0-9-]{3,70}?)(?:\s{2,}|NIF|CIF|Direcci)/i);
+  if (titularMatch && titularMatch[1]) datos.nombre = titularMatch[1].trim().replace(/\s+/g,' ');
+
+  // Dirección
+  var dirPatterns = [
+    /Direcci[oó]n de suministro[:\s]+([A-ZÁÉÍÓÚÑC\/][^\n]{5,80}?)(?:\s{2,}|Plan|NIF|CUPS|Peaje|Titular)/i,
+    /Direcci[oó]n del punto de suministro[:\s]+([A-ZÁÉÍÓÚÑ][^\n]{5,80}?)(?:\s{2,}|Titular|NIF|Fecha)/i,
+    /Direcci[oó]n[:\s]+([A-Za-z\/\s,.0-9-]{5,80}?)(?:\s{2,}|Poblaci|Tarifa|CUPS|Contrato)/i,
+  ];
+  for (var dp=0;dp<dirPatterns.length;dp++) {
+    var dm=t.match(dirPatterns[dp]);
+    if (dm&&dm[1]&&dm[1].trim().length>5){datos.dir=dm[1].trim().replace(/\s+/g,' ');break;}
+  }
+
+  // Tarifa
+  var tarifaPatterns=[
+    /Peaje de acceso a la red[^:]*:\s*(\d\.\d\s*TD)/i,
+    /Peaje de acceso\s+(\d\.\d\s*TD)/i,
+    /Peaje de transporte[^:]*:\s*(\d\.\d\s*TD)/i,
+    /Tarifa de acceso[:\s]+(\d\.\d\s*TD)/i,
+    /\b(2\.0\s*TD|3\.0\s*TD|6\.[1-4]\s*TD)\b/i,
+  ];
+  for (var tp=0;tp<tarifaPatterns.length;tp++){
+    var tm=t.match(tarifaPatterns[tp]);
+    if (tm){datos.tarifa=tm[1].replace(/\s/g,'').toUpperCase();break;}
+  }
+
+  // Potencias
+  var potencias=[];
+  var pot3td=t.match(/P1\s+([\d,\.]+)[;,]\s*P2\s+([\d,\.]+)[;,]\s*P3\s+([\d,\.]+)[;,]\s*P4\s+([\d,\.]+)[;,]\s*P5\s+([\d,\.]+)[;,]\s*P6\s+([\d,\.]+)/i);
+  if (pot3td){for(var pi=1;pi<=6;pi++)potencias.push(parseFloat(pot3td[pi].replace(',','.')));}
+
+  if(potencias.length===0){
+    var ibPunta=t.match(/Potencia punta[:\s]+([\d,\.]+)\s*kW/i);
+    var ibValle=t.match(/Potencia valle[:\s]+([\d,\.]+)\s*kW/i);
+    if(ibPunta)potencias.push(parseFloat(ibPunta[1].replace(',','.')));
+    if(ibValle)potencias.push(parseFloat(ibValle[1].replace(',','.')));
+  }
+  if(potencias.length===0){
+    var repPunta=t.match(/Punta[:\s]+([\d,\.]+)\s*kW/i);
+    var repValle=t.match(/Valle[:\s]+([\d,\.]+)\s*kW/i);
+    if(repPunta)potencias.push(parseFloat(repPunta[1].replace(',','.')));
+    if(repValle)potencias.push(parseFloat(repValle[1].replace(',','.')));
+  }
+  if(potencias.length===0){
+    var vis6=t.match(/P1[:\s]+([\d,\.]+)\s*kW[^P]*P2[:\s]+([\d,\.]+)\s*kW[^P]*P3[:\s]+([\d,\.]+)\s*kW[^P]*P4[:\s]+([\d,\.]+)\s*kW[^P]*P5[:\s]+([\d,\.]+)\s*kW[^P]*P6[:\s]+([\d,\.]+)\s*kW/i);
+    if(vis6){for(var vi=1;vi<=6;vi++)potencias.push(parseFloat(vis6[vi].replace(',','.')));}
+    else{
+      var vis2=t.match(/P1[:\s]+([\d,\.]+)\s*kW[^P]*P2[:\s]+([\d,\.]+)\s*kW/i);
+      if(vis2){potencias.push(parseFloat(vis2[1].replace(',','.')));potencias.push(parseFloat(vis2[2].replace(',','.')));}
+    }
+  }
+  if(potencias.length===0){
+    var eb=t.match(/Potencia contratada\s+([\d,\.]+)\s*kW\s*-\s*([\d,\.]+)\s*kW/i);
+    if(eb){potencias.push(parseFloat(eb[1].replace(',','.')));potencias.push(parseFloat(eb[2].replace(',','.')));}
+  }
+  if(potencias.length>0)datos.potencias=potencias;
+
+  // Fin de contrato
+  var finMatch=
+    t.match(/Vigencia hasta[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i)||
+    t.match(/Fecha final del contrato[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i)||
+    t.match(/Fecha fin de contrato[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i)||
+    t.match(/Fecha de fin de contrato[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i)||
+    t.match(/Fin de contrato[^:]*[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i);
+  if(finMatch)datos.finContrato=finMatch[1];
+
+  return datos;
+}
+
+// ── COMERCIALES ────────────────────────────────────────────────────
+async function cargarComerciales2() {
+  try {
+    const usuarios = await api('GET', '/api/usuarios');
+    const comerciales = (usuarios||[]).filter(u => u.rol === 'comercial');
+    const lista = document.getElementById('lista-comerciales');
+    if (!comerciales.length) {
+      lista.innerHTML = '<div class="empty"><div class="empty-icon">👤</div><div class="empty-text">No hay comerciales creados</div></div>';
+      return;
+    }
+    lista.innerHTML = comerciales.map(u => `
+      <div class="user-card">
+        <div class="user-avatar">${u.nombre.charAt(0).toUpperCase()}</div>
+        <div class="user-info-block">
+          <div class="user-name">${u.nombre}</div>
+          <div class="user-email">${u.email}</div>
+          <div class="user-meta">${u.activo ? '✅ Activo' : '❌ Inactivo'} · Último acceso: ${u.ultimo_acceso ? new Date(u.ultimo_acceso).toLocaleDateString('es-ES') : 'Nunca'}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="editarComercial('${u.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="desactivarComercial('${u.id}')">🗑️</button>
+        </div>
+      </div>`).join('');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function abrirModalComercial() {
+  document.getElementById('modal-comercial-title').textContent = 'Nuevo Comercial';
+  document.getElementById('com-id').value = '';
+  document.getElementById('com-nombre').value = '';
+  document.getElementById('com-email').value = '';
+  document.getElementById('com-tel').value = '';
+  document.getElementById('com-pass').value = '';
+  document.getElementById('modal-comercial').classList.add('open');
+}
+
+function editarComercial(id) {
+  const u = USUARIOS.find(x => x.id === id) || {id, nombre:'', email:'', telefono:''};
+  document.getElementById('modal-comercial-title').textContent = 'Editar Comercial';
+  document.getElementById('com-id').value = id;
+  document.getElementById('com-nombre').value = u.nombre || '';
+  document.getElementById('com-email').value = u.email || '';
+  document.getElementById('com-tel').value = u.telefono || '';
+  document.getElementById('com-pass').value = '';
+  document.getElementById('modal-comercial').classList.add('open');
+}
+
+async function guardarComercial() {
+  const id = document.getElementById('com-id').value;
+  const nombre = document.getElementById('com-nombre').value.trim();
+  if (!nombre) { toast('El nombre es obligatorio', 'error'); return; }
+  const emailAuto = 'comercial.' + nombre.toLowerCase().replace(/\s+/g,'.').replace(/[^a-z0-9.]/g,'') + '.' + Date.now() + '@sin-acceso.local';
+  const passAuto = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  const body = { nombre, rol: 'comercial' };
+  if (!id) { body.email = emailAuto; body.password = passAuto; }
+  try {
+    if (id) await api('PUT', '/api/usuarios/' + id, body);
+    else await api('POST', '/api/usuarios', body);
+    cerrarModal('modal-comercial');
+    cargarComerciales2();
+    toast(id ? 'Comercial actualizado ✅' : 'Comercial creado ✅');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function desactivarComercial(id) {
+  if (!confirm('¿Desactivar este comercial?')) return;
+  try {
+    await api('DELETE', '/api/usuarios/' + id);
+    cargarComerciales2();
+    toast('Comercial desactivado');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── SUPERADMIN ────────────────────────────────────────────────────
+let EMPRESAS = [];
+
+async function cargarEmpresas() {
+  try {
+    EMPRESAS = await api('GET', '/api/admin/empresas');
+    renderEmpresas();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function renderEmpresas() {
+  const tbody = document.getElementById('tabla-empresas');
+  if (!EMPRESAS.length) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="empty-icon">🏢</div><div class="empty-text">No hay empresas</div></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = EMPRESAS.map(e => {
+    const hoy = new Date();
+    const fin = new Date(e.trial_fin);
+    const dias = Math.ceil((fin - hoy) / (1000*60*60*24));
+    const trialOk = dias > 0;
+    const planBadge = e.plan === 'trial'
+      ? (trialOk ? `<span class="badge" style="background:#fef9c3;color:#713f12;">🎁 Trial ${dias}d</span>` : '<span class="badge badge-baja">⏰ Expirado</span>')
+      : e.plan === 'anual'
+        ? `<span class="badge badge-activo">⭐ Anual 49€</span>`
+        : `<span class="badge badge-activo">${e.plan}</span>`;
+    const estadoBadge = e.activa
+      ? '<span class="badge badge-activo">✅ Activa</span>'
+      : '<span class="badge badge-baja">❌ Inactiva</span>';
+    const alta = new Date(e.created_at).toLocaleDateString('es-ES');
+    return `<tr>
+      <td><strong>${e.nombre}</strong></td>
+      <td>${e.email}</td>
+      <td>${planBadge}</td>
+      <td>${trialOk ? dias + ' días' : '—'}</td>
+      <td><strong>${e.num_clientes || 0}</strong></td>
+      <td>${estadoBadge}</td>
+      <td>${alta}</td>
+      <td>
+        <button class="btn btn-secondary btn-sm" onclick="editarEmpresa('${e.id}')">✏️</button>
+        <button class="btn btn-${e.activa ? 'danger' : 'secondary'} btn-sm" onclick="toggleEmpresa('${e.id}',${!e.activa})">${e.activa ? '🚫' : '✅'}</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function abrirModalEmpresa() {
+  document.getElementById('modal-empresa-title').textContent = 'Nueva Empresa Cliente';
+  document.getElementById('e-id').value = '';
+  document.getElementById('e-nombre').value = '';
+  document.getElementById('e-email').value = '';
+  document.getElementById('e-tel').value = '';
+  document.getElementById('e-plan').value = 'trial';
+  document.getElementById('e-dias').value = '30';
+  document.getElementById('e-activa').value = 'true';
+  document.getElementById('e-admin-nombre').value = '';
+  document.getElementById('e-admin-email').value = '';
+  document.getElementById('e-admin-pass').value = '';
+  document.getElementById('modal-empresa').classList.add('open');
+}
+
+function editarEmpresa(id) {
+  const e = EMPRESAS.find(x => x.id===id);
+  if (!e) return;
+  document.getElementById('modal-empresa-title').textContent = 'Editar Empresa';
+  document.getElementById('e-id').value = e.id;
+  document.getElementById('e-nombre').value = e.nombre;
+  document.getElementById('e-email').value = e.email;
+  document.getElementById('e-tel').value = e.telefono || '';
+  document.getElementById('e-plan').value = e.plan;
+  // Calcular días restantes reales
+  const diasRestantes = Math.max(1, Math.ceil((new Date(e.trial_fin) - new Date()) / (1000*60*60*24)));
+  document.getElementById('e-dias').value = e.plan === 'trial' ? diasRestantes : 30;
+  document.getElementById('e-activa').value = String(e.activa);
+  document.getElementById('e-admin-nombre').value = '';
+  document.getElementById('e-admin-email').value = '';
+  document.getElementById('e-admin-pass').value = '';
+  document.getElementById('modal-empresa').classList.add('open');
+}
+
+async function guardarEmpresa() {
+  const id = document.getElementById('e-id').value;
+  const nombre = document.getElementById('e-nombre').value.trim();
+  const email = document.getElementById('e-email').value.trim();
+  if (!nombre || !email) { toast('Nombre y email son obligatorios', 'error'); return; }
+
+  if (!id) {
+    // Nueva empresa
+    const adminNombre = document.getElementById('e-admin-nombre').value.trim();
+    const adminEmail = document.getElementById('e-admin-email').value.trim();
+    const adminPass = document.getElementById('e-admin-pass').value;
+    if (!adminNombre || !adminEmail || !adminPass) { toast('Los datos del admin son obligatorios', 'error'); return; }
+    try {
+      await api('POST', '/api/admin/empresas', {
+        nombre, email, telefono: document.getElementById('e-tel').value,
+        plan: document.getElementById('e-plan').value,
+        dias_trial: parseInt(document.getElementById('e-dias').value) || 30,
+        admin_nombre: adminNombre, admin_email: adminEmail, admin_password: adminPass
+      });
+      cerrarModal('modal-empresa');
+      cargarEmpresas();
+      toast('✅ Empresa creada correctamente');
+    } catch(e) { toast(e.message, 'error'); }
+  } else {
+    // Editar empresa
+    try {
+      const plan = document.getElementById('e-plan').value;
+      const dias = parseInt(document.getElementById('e-dias').value) || 30;
+      // Calcular trial_fin según el plan
+      const trialFin = new Date();
+      if (plan === 'trial') trialFin.setDate(trialFin.getDate() + dias);
+      else if (plan === 'anual') trialFin.setFullYear(trialFin.getFullYear() + 1);
+      else trialFin.setFullYear(trialFin.getFullYear() + 10); // fallback
+      await api('PUT', '/api/admin/empresas/'+id, {
+        nombre, email, telefono: document.getElementById('e-tel').value,
+        plan,
+        trial_fin: trialFin.toISOString(),
+        activa: document.getElementById('e-activa').value === 'true'
+      });
+      cerrarModal('modal-empresa');
+      cargarEmpresas();
+      toast('✅ Empresa actualizada');
+    } catch(e) { toast(e.message, 'error'); }
+  }
+}
+
+async function toggleEmpresa(id, activa) {
+  const accion = activa ? 'activar' : 'desactivar';
+  if (!confirm('¿' + accion.charAt(0).toUpperCase() + accion.slice(1) + ' esta empresa?')) return;
+  try {
+    await api('PUT', '/api/admin/empresas/'+id, { activa });
+    cargarEmpresas();
+    toast(activa ? '✅ Empresa activada' : '🚫 Empresa desactivada');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── EXPORTAR CSV ─────────────────────────────────────────────────
+function exportarCSV() {
+  if (!CLIENTES.length) { toast('No hay clientes para exportar', 'error'); return; }
+  const q = (document.getElementById('search').value||'').toLowerCase();
+  const fe = document.getElementById('f-estado').value;
+  const ft = document.getElementById('f-tipo').value;
+  const fcEl = document.getElementById('f-comercial');
+  const fc = fcEl ? fcEl.value : '';
+  const list = CLIENTES.filter(c => {
+    const txt = (c.nombre+c.nif+c.cups_luz+c.cups_gas+c.comercializadora_luz+c.comercializadora_gas).toLowerCase();
+    return (!q||txt.includes(q))&&(!fe||c.estado===fe)&&(!ft||c.tipo===ft||c.tipo==='ambos')&&(!fc||c.comercial_id===fc);
+  });
+  const h = ['Nombre','NIF/CIF','Telefono','Email','Direccion','Tipo','Estado','CUPs Luz','Comercializadora Luz','Tarifa Luz','Vencimiento Luz','CUPs Gas','Comercializadora Gas','Tarifa Gas','Vencimiento Gas','Potencias kW','Comision EUR','Tipo Comision','Comercial','Notas'];
+  const r = list.map(c => [
+    c.nombre||'', c.nif||'', c.telefono||'', c.email||'', c.direccion||'',
+    c.tipo||'', c.estado||'',
+    c.cups_luz||'', c.comercializadora_luz||'', c.tarifa_luz||'',
+    c.vencimiento_luz ? new Date(c.vencimiento_luz).toLocaleDateString('es-ES') : '',
+    c.cups_gas||'', c.comercializadora_gas||'', c.tarifa_gas||'',
+    c.vencimiento_gas ? new Date(c.vencimiento_gas).toLocaleDateString('es-ES') : '',
+    c.potencias ? c.potencias.join(';') : '',
+    c.comision_importe||'', c.comision_tipo||'',
+    c.usuarios ? c.usuarios.nombre : (c.comercial_nombre||''),
+    c.notas||''
+  ]);
+  const csv = '\uFEFF' + [h,...r].map(row => row.map(v => '"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'clientes_' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('CSV exportado (' + list.length + ' clientes)');
+}
+
+
+
+// ── PLANTILLA ─────────────────────────────────────────────────────
+function descargarPlantilla() {
+  const h = ['Nombre','NIF/CIF','Telefono','Email','Direccion','Tipo (luz/gas/ambos)','Estado (activo/incidencia/baja)','CUPs Luz','Comercializadora Luz','Tarifa Luz (2.0TD/3.0TD)','Vencimiento Luz (DD/MM/AAAA)','CUPs Gas','Comercializadora Gas','Tarifa Gas (RL1/RL2)','Vencimiento Gas (DD/MM/AAAA)','Potencias kW (P1;P2;P3)','Comision EUR','Tipo Comision (unico/mensual/anual)','Notas'];
+  const ej = ['Comunidad Ejemplo','H12345678','600123456','admin@ejemplo.com','Calle Mayor 1 Madrid','luz','activo','ES0031500123456789AB','Iberdrola','2.0TD','31/12/2026','','','','','5.5;5.5','150','anual','Ejemplo'];
+  const csv = '\uFEFF' + [h, ej].map(row => row.map(v => '"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'plantilla_importar_clientes.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Plantilla descargada');
+}
+
+// ── IMPORTAR CSV/EXCEL ────────────────────────────────────────────
+async function importarExcel(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      const texto = e.target.result;
+      const lineas = texto.split(/\r?\n/).filter(l => l.trim());
+      if (lineas.length < 2) { toast('Archivo vacío', 'error'); return; }
+      const parseFila = l => l.split(';').map(v => v.replace(/^"|"$/g,'').replace(/""/g,'"').trim());
+      const data = lineas.slice(1).filter(l => parseFila(l)[0]);
+      if (!data.length) { toast('No hay datos', 'error'); return; }
+      let ok=0, err=0;
+      for (const linea of data) {
+        const r = parseFila(linea);
+        const pf = v => {
+          if (!v) return null;
+          const m = v.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+          if (m) return (m[3].length===2?'20'+m[3]:m[3])+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+          return null;
+        };
+        const potStr = (r[15]||'').trim();
+        const potencias = potStr ? potStr.split(';').map(p=>parseFloat(p)).filter(p=>!isNaN(p)) : null;
+        const body = {
+          nombre:(r[0]||'').trim(), nif:(r[1]||'').trim(), telefono:(r[2]||'').trim(),
+          email:(r[3]||'').trim(), direccion:(r[4]||'').trim(),
+          tipo:(r[5]||'luz').toLowerCase()||'luz', estado:(r[6]||'activo').toLowerCase()||'activo',
+          cups_luz:(r[7]||'').trim(), comercializadora_luz:(r[8]||'').trim(), tarifa_luz:(r[9]||'').trim(),
+          vencimiento_luz:pf(r[10]), cups_gas:(r[11]||'').trim(),
+          comercializadora_gas:(r[12]||'').trim(), tarifa_gas:(r[13]||'').trim(),
+          vencimiento_gas:pf(r[14]), potencias,
+          comision_importe:parseFloat(r[16])||null,
+          comision_tipo:(r[17]||'unico').toLowerCase()||'unico',
+          notas:(r[18]||'').trim()
+        };
+        if (!body.nombre) continue;
+        try { const n = await api('POST','/api/clientes',body); CLIENTES.unshift(n); ok++; } catch(e){ err++; }
+      }
+      renderClientes(); cargarDashboard(); input.value='';
+      toast('Importados: '+ok+' clientes'+(err>0?' | Errores: '+err:''), ok>0?'success':'error');
+    } catch(e) { toast('Error al leer el archivo','error'); console.error(e); }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// ── Init ───────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
