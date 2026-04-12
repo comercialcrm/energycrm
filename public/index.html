@@ -286,7 +286,7 @@ select.filter-sel:focus{border-color:var(--am);}
     <div class="tab active" onclick="showTab('dashboard')" data-tab="dashboard"><span class="tab-icon">📊</span>Dashboard</div>
     <div class="tab" onclick="showTab('clientes')" data-tab="clientes"><span class="tab-icon">👥</span>Clientes</div>
     <div class="tab admin-only" onclick="showTab('comerciales')" data-tab="comerciales"><span class="tab-icon">👤</span>Comerciales</div>
-    <div class="tab admin-only" onclick="showTab('usuarios')" data-tab="usuarios"><span class="tab-icon">⚙️</span>Admin</div>
+    <div class="tab superadmin-only" onclick="showTab('usuarios')" data-tab="usuarios"><span class="tab-icon">⚙️</span>Admin</div>
     <div class="tab superadmin-only" onclick="showTab('superadmin')" data-tab="superadmin"><span class="tab-icon">👑</span>Super Admin</div>
   </div>
 
@@ -1095,10 +1095,10 @@ async function cargarUsuarios() {
           <div class="user-email">${u.email}</div>
           <div class="user-meta">Rol: ${u.rol} · ${u.activo?'✅ Activo':'❌ Inactivo'} · Último acceso: ${u.ultimo_acceso?new Date(u.ultimo_acceso).toLocaleDateString('es-ES'):'Nunca'}</div>
         </div>
-        <div style="display:flex;gap:8px">
+        ${ME && ME.usuario.rol === 'superadmin' ? `<div style="display:flex;gap:8px">
           <button class="btn btn-secondary btn-sm" onclick="editarUsuario('${u.id}')">✏️</button>
           <button class="btn btn-danger btn-sm" onclick="desactivarUsuario('${u.id}')">🗑️</button>
-        </div>
+        </div>` : ''}
       </div>`).join('');
   } catch(e) { toast(e.message,'error'); }
 }
