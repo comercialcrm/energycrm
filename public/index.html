@@ -921,7 +921,7 @@ async function cargarComerciales() {
   const bloque = document.getElementById('bloque-comercial-asignado');
   const sel = document.getElementById('c-comercial-asignado');
   try {
-    const usuarios = await api('GET', '/api/usuarios');
+    const usuarios = await api('GET', '/api/usuarios?activos=true');
     sel.innerHTML = '<option value="">Sin asignar</option>' + 
       (usuarios||[]).map(u => `<option value="${u.id}">${u.nombre} (${u.rol})</option>`).join('');
     bloque.style.display = 'block';
@@ -1351,7 +1351,7 @@ function extraerDatosFactura(texto) {
 // ── COMERCIALES ────────────────────────────────────────────────────
 async function cargarComerciales2() {
   try {
-    const usuarios = await api('GET', '/api/usuarios');
+    const usuarios = await api('GET', '/api/usuarios?activos=true');
     const comerciales = (usuarios||[]).filter(u => u.rol === 'comercial');
     const lista = document.getElementById('lista-comerciales');
     if (!comerciales.length) {
