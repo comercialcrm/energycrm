@@ -821,10 +821,10 @@ async function cargarClientes() {
     if (ME && ['admin','superadmin'].includes(ME.usuario.rol)) {
       const sel = document.getElementById('f-comercial');
       sel.style.display = 'block';
-      const usuarios = await api('GET', '/api/usuarios');
+      const usuarios = await api('GET', '/api/usuarios?activos=true');
       const comerciales = (usuarios||[]);
       sel.innerHTML = '<option value="">👤 Todos los comerciales</option>' +
-        comerciales.filter(u => u.activo).map(u => `<option value="${u.id}">${u.nombre}</option>`).join('');
+        comerciales.map(u => `<option value="${u.id}">${u.nombre}</option>`).join('');
     }
   } catch(e) { toast(e.message, 'error'); }
 }
@@ -975,9 +975,9 @@ async function editarCliente(id) {
   // Cargar comerciales y LUEGO asignar el valor correcto
   const sel = document.getElementById('c-comercial-asignado');
   try {
-    const usuarios = await api('GET', '/api/usuarios');
+    const usuarios = await api('GET', '/api/usuarios?activos=true');
     sel.innerHTML = '<option value="">Sin asignar</option>' +
-      (usuarios||[]).filter(u => u.activo).map(u => `<option value="${u.id}">${u.nombre} (${u.rol})</option>`).join('');
+      (usuarios||[]).map(u => `<option value="${u.id}">${u.nombre} (${u.rol})</option>`).join('');
     document.getElementById('bloque-comercial-asignado').style.display = 'block';
   } catch(e) {}
   if (c.comercial_id) sel.value = c.comercial_id;
