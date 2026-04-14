@@ -328,6 +328,30 @@ select.filter-sel:focus{border-color:var(--am);}
         <select class="filter-sel admin-only" id="f-comercial" onchange="filtrar()" style="display:none">
           <option value="">👤 Todos los comerciales</option>
         </select>
+        <select class="filter-sel" id="f-mes" onchange="filtrar()">
+          <option value="">📅 Todos los meses</option>
+          <option value="1">Enero</option>
+          <option value="2">Febrero</option>
+          <option value="3">Marzo</option>
+          <option value="4">Abril</option>
+          <option value="5">Mayo</option>
+          <option value="6">Junio</option>
+          <option value="7">Julio</option>
+          <option value="8">Agosto</option>
+          <option value="9">Septiembre</option>
+          <option value="10">Octubre</option>
+          <option value="11">Noviembre</option>
+          <option value="12">Diciembre</option>
+        </select>
+        <select class="filter-sel" id="f-anio" onchange="filtrar()">
+          <option value="">📅 Todos los años</option>
+          <option value="2025">2025</option>
+          <option value="2026">2026</option>
+          <option value="2027">2027</option>
+          <option value="2028">2028</option>
+          <option value="2029">2029</option>
+          <option value="2030">2030</option>
+        </select>
         <button class="btn btn-secondary" onclick="exportarCSV()">📥 Exportar CSV</button>
         <button class="btn btn-secondary" onclick="descargarPlantilla()">📋 Plantilla</button>
         <label class="btn btn-secondary" style="cursor:pointer">📤 Importar
@@ -833,9 +857,16 @@ function renderClientes() {
   const fc = document.getElementById('f-comercial').value;
   const hoy = new Date(); const en30 = new Date(); en30.setDate(hoy.getDate()+30); const en90 = new Date(); en90.setDate(hoy.getDate()+90);
 
+  const fmes = document.getElementById('f-mes').value;
+  const fanio = document.getElementById('f-anio').value;
+
   let list = CLIENTES.filter(c => {
     const txt = (c.nombre+c.nif+c.cups_luz+c.cups_gas+c.comercializadora_luz+c.comercializadora_gas).toLowerCase();
-    return (!q || txt.includes(q)) && (!fe || c.estado===fe) && (!ft || c.tipo===ft || c.tipo==='ambos') && (!fc || c.comercial_id===fc);
+    const venc = c.vencimiento_luz || c.vencimiento_gas;
+    const vDate = venc ? new Date(venc) : null;
+    const mesOk = !fmes || (vDate && (vDate.getMonth()+1) === parseInt(fmes));
+    const anioOk = !fanio || (vDate && vDate.getFullYear() === parseInt(fanio));
+    return (!q || txt.includes(q)) && (!fe || c.estado===fe) && (!ft || c.tipo===ft || c.tipo==='ambos') && (!fc || c.comercial_id===fc) && mesOk && anioOk;
   });
 
   // Sort: bajas last, urgentes first
