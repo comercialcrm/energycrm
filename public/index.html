@@ -352,6 +352,9 @@ select.filter-sel:focus{border-color:var(--am);}
           <option value="2029">2029</option>
           <option value="2030">2030</option>
         </select>
+        <select class="filter-sel" id="f-comercializadora" onchange="filtrar()">
+          <option value="">🏢 Todas las comercializadoras</option>
+        </select>
         <button class="btn btn-secondary" onclick="exportarCSV()">📥 Exportar CSV</button>
         <button class="btn btn-secondary" onclick="descargarPlantilla()">📋 Plantilla</button>
         <label class="btn btn-secondary" style="cursor:pointer">📤 Importar
@@ -838,6 +841,11 @@ async function cargarClientes() {
   try {
     CLIENTES = await api('GET', '/api/clientes');
     renderClientes();
+    // Poblar filtro de comercializadoras dinámicamente
+    const coms = [...new Set(CLIENTES.flatMap(c => [c.comercializadora_luz, c.comercializadora_gas].filter(Boolean)))].sort();
+    const selCom = document.getElementById('f-comercializadora');
+    selCom.innerHTML = '<option value="">🏢 Todas las comercializadoras</option>' +
+      coms.map(c => `<option value="${c}">${c}</option>`).join('');
     // Poblar filtro de comerciales (solo admin)
     if (ME && ['admin','superadmin'].includes(ME.usuario.rol)) {
       const sel = document.getElementById('f-comercial');
@@ -859,6 +867,7 @@ function renderClientes() {
 
   const fmes = document.getElementById('f-mes').value;
   const fanio = document.getElementById('f-anio').value;
+  const fcom = document.getElementById('f-comercializadora').value;
 
   let list = CLIENTES.filter(c => {
     const txt = (c.nombre+c.nif+c.cups_luz+c.cups_gas+c.comercializadora_luz+c.comercializadora_gas).toLowerCase();
@@ -866,7 +875,8 @@ function renderClientes() {
     const vDate = venc ? new Date(venc) : null;
     const mesOk = !fmes || (vDate && (vDate.getMonth()+1) === parseInt(fmes));
     const anioOk = !fanio || (vDate && vDate.getFullYear() === parseInt(fanio));
-    return (!q || txt.includes(q)) && (!fe || c.estado===fe) && (!ft || c.tipo===ft || c.tipo==='ambos') && (!fc || c.comercial_id===fc) && mesOk && anioOk;
+    const comOk = !fcom || (c.comercializadora_luz === fcom || c.comercializadora_gas === fcom);
+    return (!q || txt.includes(q)) && (!fe || c.estado===fe) && (!ft || c.tipo===ft || c.tipo==='ambos') && (!fc || c.comercial_id===fc) && mesOk && anioOk && comOk;
   });
 
   // Sort: bajas last, urgentes first
