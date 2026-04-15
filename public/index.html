@@ -697,6 +697,30 @@ select.filter-sel:focus{border-color:var(--am);}
   </div>
 </div>
 
+<!-- MODAL RESET PASSWORD SUPERADMIN -->
+<div class="modal-overlay" id="modal-reset-pass">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <div class="modal-title">🔑 Cambiar contraseña</div>
+      <button class="modal-close" onclick="cerrarModal('modal-reset-pass')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="reset-pass-empresa-nombre" style="font-size:13px;color:#64748b;margin-bottom:16px;"></div>
+      <div class="form-row full" style="margin-bottom:16px">
+        <div class="field"><label>Nueva contraseña</label><input type="password" id="reset-pw-nueva" placeholder="Mínimo 6 caracteres"></div>
+      </div>
+      <div class="form-row full" style="margin-bottom:0">
+        <div class="field"><label>Repetir nueva contraseña</label><input type="password" id="reset-pw-repetir" placeholder="Repite la nueva contraseña"></div>
+      </div>
+      <input type="hidden" id="reset-empresa-id">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModal('modal-reset-pass')">Cancelar</button>
+      <button class="btn btn-primary" onclick="resetPasswordEmpresa()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
@@ -743,7 +767,15 @@ async function doLogin() {
     localStorage.setItem('ecrm_token', TOKEN);
     arrancarApp(data);
   } catch(e) {
-    err.textContent = e.message;
+    const msg = e.message;
+    const esTrialOContacto = msg.includes('prueba') || msg.includes('soporte') || msg.includes('desactivada');
+    if (esTrialOContacto) {
+      err.innerHTML = msg + '<br><br>' +
+        '<a href="https://wa.me/34900433103" target="_blank" style="color:#1A2B4A;font-weight:700;">📱 WhatsApp: 900 433 103</a><br>' +
+        '<a href="mailto:renovaciones@comercialcrm.com" style="color:#1A2B4A;font-weight:700;">✉️ renovaciones@comercialcrm.com</a>';
+    } else {
+      err.textContent = msg;
+    }
     err.style.display = 'block';
   }
 }
@@ -1524,6 +1556,7 @@ function renderEmpresas() {
       <td>${alta}</td>
       <td>
         <button class="btn btn-secondary btn-sm" onclick="editarEmpresa('${e.id}')">✏️</button>
+        <button class="btn btn-secondary btn-sm" onclick="abrirModalResetPass('${e.id}','${e.nombre}')">🔑</button>
         <button class="btn btn-${e.activa ? 'danger' : 'secondary'} btn-sm" onclick="toggleEmpresa('${e.id}',${!e.activa})">${e.activa ? '🚫' : '✅'}</button>
       </td>
     </tr>`;
@@ -1719,6 +1752,29 @@ async function importarExcel(input) {
     } catch(e) { toast('Error al leer el archivo','error'); console.error(e); }
   };
   reader.readAsText(file, 'UTF-8');
+}
+
+// ── RESET PASSWORD SUPERADMIN ────────────────────────────────────
+async function abrirModalResetPass(empresaId, empresaNombre) {
+  document.getElementById('reset-empresa-id').value = empresaId;
+  document.getElementById('reset-pass-empresa-nombre').textContent = 'Empresa: ' + empresaNombre;
+  document.getElementById('reset-pw-nueva').value = '';
+  document.getElementById('reset-pw-repetir').value = '';
+  document.getElementById('modal-reset-pass').classList.add('open');
+}
+
+async function resetPasswordEmpresa() {
+  const empresaId = document.getElementById('reset-empresa-id').value;
+  const nueva = document.getElementById('reset-pw-nueva').value;
+  const repetir = document.getElementById('reset-pw-repetir').value;
+  if (!nueva || !repetir) { toast('Rellena todos los campos', 'error'); return; }
+  if (nueva.length < 6) { toast('La contraseña debe tener al menos 6 caracteres', 'error'); return; }
+  if (nueva !== repetir) { toast('Las contraseñas no coinciden', 'error'); return; }
+  try {
+    await api('POST', '/api/admin/empresas/'+empresaId+'/reset-password', { password: nueva });
+    cerrarModal('modal-reset-pass');
+    toast('✅ Contraseña actualizada correctamente');
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 // ── CAMBIAR CONTRASEÑA ───────────────────────────────────────────
