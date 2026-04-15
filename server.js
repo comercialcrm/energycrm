@@ -364,6 +364,23 @@ app.post('/api/admin/empresas', auth, soloSuperAdmin, async (req, res) => {
   res.json({ empresa, usuario });
 });
 
+app.post('/api/admin/empresas/:id/reset-password', auth, soloSuperAdmin, async (req, res) => {
+  const { password } = req.body;
+  if (!password) return res.status(400).json({ error: 'Contraseña requerida' });
+  // Buscar el admin de la empresa
+  const { data: usuario } = await supabase
+    .from('usuarios')
+    .select('id')
+    .eq('empresa_id', req.params.id)
+    .eq('rol', 'admin')
+    .eq('activo', true)
+    .single();
+  if (!usuario) return res.status(404).json({ error: 'Admin no encontrado' });
+  const password_hash = await bcrypt.hash(password, 10);
+  await supabase.from('usuarios').update({ password_hash }).eq('id', usuario.id);
+  res.json({ ok: true });
+});
+
 app.put('/api/admin/empresas/:id', auth, soloSuperAdmin, async (req, res) => {
   const { data, error } = await supabase.from('empresas').update(req.body).eq('id', req.params.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
