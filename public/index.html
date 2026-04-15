@@ -277,6 +277,7 @@ select.filter-sel:focus{border-color:var(--am);}
     <div class="topbar-right">
       <div id="trial-info" class="trial-info" style="display:none"></div>
       <div class="user-info" id="topbar-user"></div>
+      <button class="btn-logout" onclick="abrirModalPassword()" style="background:rgba(255,255,255,.1);color:white;border:1px solid rgba(255,255,255,.2);padding:6px 14px;border-radius:8px;font-size:12px;cursor:pointer;">🔑 Contraseña</button>
       <button class="btn-logout" onclick="doLogout()">Salir</button>
     </div>
   </div>
@@ -667,6 +668,31 @@ select.filter-sel:focus{border-color:var(--am);}
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="cerrarModal('modal-usuario')">Cancelar</button>
       <button class="btn btn-primary" onclick="guardarUsuario()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CAMBIAR CONTRASEÑA -->
+<div class="modal-overlay" id="modal-password">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <div class="modal-title">🔑 Cambiar contraseña</div>
+      <button class="modal-close" onclick="cerrarModal('modal-password')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row full" style="margin-bottom:16px">
+        <div class="field"><label>Contraseña actual</label><input type="password" id="pw-actual" placeholder="Tu contraseña actual"></div>
+      </div>
+      <div class="form-row full" style="margin-bottom:16px">
+        <div class="field"><label>Nueva contraseña</label><input type="password" id="pw-nueva" placeholder="Mínimo 6 caracteres"></div>
+      </div>
+      <div class="form-row full" style="margin-bottom:0">
+        <div class="field"><label>Repetir nueva contraseña</label><input type="password" id="pw-repetir" placeholder="Repite la nueva contraseña"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cerrarModal('modal-password')">Cancelar</button>
+      <button class="btn btn-primary" onclick="cambiarPassword()">💾 Guardar</button>
     </div>
   </div>
 </div>
