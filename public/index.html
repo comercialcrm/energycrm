@@ -1721,6 +1721,28 @@ async function importarExcel(input) {
   reader.readAsText(file, 'UTF-8');
 }
 
+// ── CAMBIAR CONTRASEÑA ───────────────────────────────────────────
+function abrirModalPassword() {
+  document.getElementById('pw-actual').value = '';
+  document.getElementById('pw-nueva').value = '';
+  document.getElementById('pw-repetir').value = '';
+  document.getElementById('modal-password').classList.add('open');
+}
+
+async function cambiarPassword() {
+  const actual = document.getElementById('pw-actual').value;
+  const nueva = document.getElementById('pw-nueva').value;
+  const repetir = document.getElementById('pw-repetir').value;
+  if (!actual || !nueva || !repetir) { toast('Rellena todos los campos', 'error'); return; }
+  if (nueva.length < 6) { toast('La contraseña debe tener al menos 6 caracteres', 'error'); return; }
+  if (nueva !== repetir) { toast('Las contraseñas no coinciden', 'error'); return; }
+  try {
+    await api('PUT', '/api/usuarios/'+ME.usuario.id, { password_actual: actual, password: nueva });
+    cerrarModal('modal-password');
+    toast('✅ Contraseña actualizada correctamente');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
 // ── Init ───────────────────────────────────────────────────────────
 init();
 </script>
