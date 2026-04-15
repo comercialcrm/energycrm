@@ -284,13 +284,14 @@ app.post('/api/usuarios', auth, soloAdmin, async (req, res) => {
 app.put('/api/usuarios/:id', auth, async (req, res) => {
   const updates = { ...req.body };
   const esMiPropioUsuario = req.params.id === req.usuario.id;
+  const esSuperAdmin = req.usuario.rol === 'superadmin';
   const esAdmin = ['admin', 'superadmin'].includes(req.usuario.rol);
 
   // Si no es admin y no es su propio usuario, denegar
   if (!esAdmin && !esMiPropioUsuario) return res.status(403).json({ error: 'No tienes permiso' });
 
-  // Si es su propio usuario y quiere cambiar contraseña, verificar la actual
-  if (esMiPropioUsuario && updates.password) {
+  // Si es su propio usuario y NO es superadmin, verificar contraseña actual
+  if (esMiPropioUsuario && !esSuperAdmin && updates.password) {
     if (!updates.password_actual) return res.status(400).json({ error: 'Introduce tu contraseña actual' });
     const { data: usuario } = await supabase.from('usuarios').select('password_hash').eq('id', req.params.id).single();
     const ok = await bcrypt.compare(updates.password_actual, usuario.password_hash);
