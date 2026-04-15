@@ -305,7 +305,11 @@ app.put('/api/usuarios/:id', auth, async (req, res) => {
   }
   delete updates.empresa_id;
 
-  const { data, error } = await supabase.from('usuarios').update(updates).eq('id', req.params.id).select('id, nombre, email, rol, activo').single();
+  // Superadmin puede actualizar cualquier usuario sin restricción de empresa
+  let query = supabase.from('usuarios').update(updates).eq('id', req.params.id);
+  if (!esSuperAdmin) query = query.eq('empresa_id', req.empresa.id);
+
+  const { data, error } = await query.select('id, nombre, email, rol, activo').single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
