@@ -281,14 +281,30 @@ app.post('/api/usuarios', auth, soloAdmin, async (req, res) => {
   res.json(data);
 });
 
-app.put('/api/usuarios/:id', auth, soloAdmin, async (req, res) => {
+app.put('/api/usuarios/:id', auth, async (req, res) => {
   const updates = { ...req.body };
+  const esMiPropioUsuario = req.params.id === req.usuario.id;
+  const esAdmin = ['admin', 'superadmin'].includes(req.usuario.rol);
+
+  // Si no es admin y no es su propio usuario, denegar
+  if (!esAdmin && !esMiPropioUsuario) return res.status(403).json({ error: 'No tienes permiso' });
+
+  // Si es su propio usuario y quiere cambiar contraseña, verificar la actual
+  if (esMiPropioUsuario && updates.password) {
+    if (!updates.password_actual) return res.status(400).json({ error: 'Introduce tu contraseña actual' });
+    const { data: usuario } = await supabase.from('usuarios').select('password_hash').eq('id', req.params.id).single();
+    const ok = await bcrypt.compare(updates.password_actual, usuario.password_hash);
+    if (!ok) return res.status(401).json({ error: 'La contraseña actual no es correcta' });
+  }
+
+  delete updates.password_actual;
   if (updates.password) {
     updates.password_hash = await bcrypt.hash(updates.password, 10);
     delete updates.password;
   }
   delete updates.empresa_id;
-  const { data, error } = await supabase.from('usuarios').update(updates).eq('id', req.params.id).eq('empresa_id', req.empresa.id).select('id, nombre, email, rol, activo').single();
+
+  const { data, error } = await supabase.from('usuarios').update(updates).eq('id', req.params.id).select('id, nombre, email, rol, activo').single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
