@@ -1120,9 +1120,24 @@ async function guardarCliente() {
     if (id) {
       const updated = await api('PUT', '/api/clientes/'+id, body);
       const idx = CLIENTES.findIndex(c => c.id===id);
-      if (idx>=0) CLIENTES[idx] = {...CLIENTES[idx], ...updated};
+      if (idx>=0) {
+        if (body.comercial_id) {
+          const sel = document.getElementById('c-comercial-asignado');
+          const opt = sel.options[sel.selectedIndex];
+          updated.usuarios = { nombre: opt ? opt.text.split(' (')[0] : '' };
+        } else {
+          updated.usuarios = null;
+        }
+        CLIENTES[idx] = {...CLIENTES[idx], ...updated};
+      }
     } else {
       const nuevo = await api('POST', '/api/clientes', body);
+      // Añadir nombre del comercial para mostrarlo sin recargar
+      if (body.comercial_id) {
+        const sel = document.getElementById('c-comercial-asignado');
+        const opt = sel.options[sel.selectedIndex];
+        nuevo.usuarios = { nombre: opt ? opt.text.split(' (')[0] : '' };
+      }
       CLIENTES.unshift(nuevo);
     }
     renderClientes();
